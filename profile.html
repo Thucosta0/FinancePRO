@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Perfil do Usuário | FinançasPro</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="navbar-container">
+            <div class="navbar-logo">
+                <a href="index.html">FinançasPro</a>
+            </div>
+            <ul class="navbar-menu">
+                <li><a href="index.html"><i class="fas fa-home"></i> Início</a></li>
+                <li><a href="transactions.html"><i class="fas fa-exchange-alt"></i> Transações</a></li>
+                <li><a href="reports.html"><i class="fas fa-chart-bar"></i> Relatórios</a></li>
+                <li><a href="profile.html" class="active"><i class="fas fa-user"></i> Perfil</a></li>
+                <li><a href="#" id="logoutBtn"><i class="fas fa-sign-out-alt"></i> Sair</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="alert-container">
+            <!-- Alertas serão inseridos aqui -->
+        </div>
+
+        <div class="page-header">
+            <h1><i class="fas fa-user-circle"></i> Perfil do Usuário</h1>
+            <p>Gerencie suas informações e integrações</p>
+        </div>
+
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="profile-info">Informações</button>
+            <button class="tab-btn" data-tab="integrations">Integrações</button>
+            <button class="tab-btn" data-tab="security">Segurança</button>
+        </div>
+
+        <div class="profile-container">
+            <!-- Informações do Perfil -->
+            <div class="tab-content active" id="profile-info">
+                <div class="profile-card">
+                    <div class="profile-header">
+                        <div class="profile-avatar">
+                            <i class="fas fa-user-circle"></i>
+                        </div>
+                        <div class="profile-details">
+                            <h2 id="userName">Carregando...</h2>
+                            <p id="userEmail">Carregando...</p>
+                        </div>
+                    </div>
+                    
+                    <div class="profile-body">
+                        <form id="profileForm">
+                            <div class="form-group">
+                                <label for="name">Nome</label>
+                                <input type="text" id="name" name="name" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="email">Email</label>
+                                <input type="email" id="email" name="email" required>
+                            </div>
+                            <div class="form-buttons">
+                                <button type="submit" class="btn-primary">
+                                    <i class="fas fa-save"></i> Salvar Alterações
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Integrações -->
+            <div class="tab-content" id="integrations">
+                <div class="integration-card">
+                    <h2>Integrações com Apps de Transporte</h2>
+                    <p>Conecte suas contas de apps de transporte para acompanhar automaticamente suas despesas.</p>
+                    
+                    <div class="integration-items">
+                        <!-- Uber -->
+                        <div class="integration-item" id="uber-integration">
+                            <div class="integration-icon uber-icon">
+                                <i class="fab fa-uber"></i>
+                            </div>
+                            <div class="integration-info">
+                                <h3>Uber</h3>
+                                <p id="uber-status">Não conectado</p>
+                                <p>Importe suas viagens de Uber automaticamente como despesas.</p>
+                            </div>
+                            <div class="integration-actions">
+                                <button id="connectUberBtn" class="btn-primary">
+                                    <i class="fas fa-plug"></i> Conectar
+                                </button>
+                                <button id="disconnectUberBtn" class="btn-danger" style="display: none;">
+                                    <i class="fas fa-unlink"></i> Desconectar
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- 99 -->
+                        <div class="integration-item" id="app99-integration">
+                            <div class="integration-icon app99-icon">
+                                <i class="fas fa-taxi"></i>
+                            </div>
+                            <div class="integration-info">
+                                <h3>99</h3>
+                                <p id="app99-status">Não conectado</p>
+                                <p>Importe suas viagens de 99 automaticamente como despesas.</p>
+                            </div>
+                            <div class="integration-actions">
+                                <button id="connect99Btn" class="btn-primary">
+                                    <i class="fas fa-plug"></i> Conectar
+                                </button>
+                                <button id="disconnect99Btn" class="btn-danger" style="display: none;">
+                                    <i class="fas fa-unlink"></i> Desconectar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="integration-info-box">
+                        <h3><i class="fas fa-info-circle"></i> Como funciona?</h3>
+                        <ol>
+                            <li>Conecte suas contas clicando nos botões acima</li>
+                            <li>Autorize o acesso aos dados de suas viagens</li>
+                            <li>Suas despesas serão importadas automaticamente</li>
+                            <li>Você pode desconectar a qualquer momento</li>
+                        </ol>
+                        <p><strong>Nota:</strong> Somente importamos os dados de suas viagens para controle financeiro. Não temos acesso a outros dados da sua conta.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Segurança -->
+            <div class="tab-content" id="security">
+                <div class="profile-card">
+                    <h2>Alterar Senha</h2>
+                    <p>Para sua segurança, use uma senha forte que você não usa em outros sites.</p>
+                    
+                    <form id="passwordForm">
+                        <div class="form-group">
+                            <label for="currentPassword">Senha Atual</label>
+                            <input type="password" id="currentPassword" name="currentPassword" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="newPassword">Nova Senha</label>
+                            <input type="password" id="newPassword" name="newPassword" required>
+                            <div class="password-strength">
+                                <div class="strength-meter" id="passwordStrength"></div>
+                                <span id="strengthText">Força: Fraca</span>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="confirmPassword">Confirmar Nova Senha</label>
+                            <input type="password" id="confirmPassword" name="confirmPassword" required>
+                        </div>
+                        <div class="form-buttons">
+                            <button type="submit" class="btn-primary">
+                                <i class="fas fa-key"></i> Alterar Senha
+                            </button>
+                        </div>
+                    </form>
+                    
+                    <div class="security-tips">
+                        <h3>Dicas de Segurança</h3>
+                        <ul>
+                            <li>Use pelo menos 8 caracteres</li>
+                            <li>Combine letras maiúsculas e minúsculas</li>
+                            <li>Inclua números e caracteres especiais</li>
+                            <li>Não reutilize senhas de outros sites</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <div class="footer-container">
+            <p>&copy; 2025 FinançasPro - Todos os direitos reservados</p>
+        </div>
+    </footer>
+
+    <script src="js/profile.js"></script>
+</body>
+</html> 

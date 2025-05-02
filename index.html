@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FinançasPro - Gestão Financeira Inteligente</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Ícones -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- CSS personalizado -->
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-wallet logo-icon"></i>
+                <span class="logo-text">FinancePro</span>
+            </a>
+            <div class="ms-auto">
+                <!-- Dropdown do usuário (inicialmente oculto) -->
+                <div id="user-dropdown" class="user-dropdown" style="display:none;">
+                    <button class="user-dropdown-button" id="user-menu-button">
+                        <div class="user-avatar">
+                            <i class="fas fa-user"></i>
+                        </div>
+                        <span>Olá, <span id="username-display">Usuário</span></span>
+                        <i class="fas fa-chevron-down ms-2"></i>
+                    </button>
+                    <div class="user-dropdown-menu">
+                        <a href="#" class="user-dropdown-menu-item">
+                            <i class="fas fa-user-circle"></i>
+                            <span>Meu Perfil</span>
+                        </a>
+                        <a href="#" class="user-dropdown-menu-item" data-bs-toggle="modal" data-bs-target="#categoriesModal">
+                            <i class="fas fa-tags"></i>
+                            <span>Gerenciar Categorias</span>
+                        </a>
+                        <a href="#" class="user-dropdown-menu-item">
+                            <i class="fas fa-cog"></i>
+                            <span>Configurações</span>
+                        </a>
+                        <a href="#" class="user-dropdown-menu-item">
+                            <i class="fas fa-history"></i>
+                            <span>Histórico de Login</span>
+                        </a>
+                        <div class="user-dropdown-menu-divider"></div>
+                        <a href="#" class="user-dropdown-menu-item logout">
+                            <i class="fas fa-sign-out-alt"></i>
+                            <span>Sair</span>
+                        </a>
+                    </div>
+                </div>
+                
+                <!-- Botões de login/cadastro (visíveis antes do login) -->
+                <div id="auth-buttons">
+                    <button class="btn btn-primary btn-glow me-2" data-bs-toggle="modal" data-bs-target="#loginModal">
+                        <i class="fas fa-sign-in-alt me-1"></i> Entrar
+                    </button>
+                    <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#registerModal">
+                        <i class="fas fa-user-plus me-1"></i> Cadastrar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Conteúdo principal -->
+    <div class="container main-container">
+        <!-- Seção de apresentação -->
+        <div id="landing-content">
+            <div class="row align-items-center hero-section">
+                <div class="col-lg-8 mx-auto text-center">
+                    <h1 class="display-4 fw-bold">Controle financeiro com <span class="text-gradient">inteligência</span></h1>
+                    <p class="lead mb-4">O FinançasPro oferece uma maneira simples e intuitiva de gerenciar suas finanças pessoais, com ferramentas poderosas e interface amigável.</p>
+                    <div class="mt-4">
+                        <button class="btn btn-primary btn-lg btn-glow me-2" data-bs-toggle="modal" data-bs-target="#loginModal">
+                            <i class="fas fa-rocket me-2"></i> Começar Agora
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Seção de recursos -->
+            <div class="row feature-section">
+                <div class="col-md-4 mb-4">
+                    <div class="card feature-card h-100">
+                        <div class="card-body">
+                            <div class="feature-icon">
+                                <i class="fas fa-chart-line"></i>
+                            </div>
+                            <h5 class="card-title mt-3">Dashboard Intuitivo</h5>
+                            <p class="card-text">Visualize suas finanças com gráficos e resumos claros e objetivos.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-4">
+                    <div class="card feature-card h-100">
+                        <div class="card-body">
+                            <div class="feature-icon">
+                                <i class="fas fa-car"></i>
+                            </div>
+                            <h5 class="card-title mt-3">Integrações Automáticas</h5>
+                            <p class="card-text">Conecte com serviços como Uber e 99 para importação automática de despesas.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-4">
+                    <div class="card feature-card h-100">
+                        <div class="card-body">
+                            <div class="feature-icon">
+                                <i class="fas fa-shield-alt"></i>
+                            </div>
+                            <h5 class="card-title mt-3">Segurança Garantida</h5>
+                            <p class="card-text">Seus dados são protegidos com as mais modernas técnicas de segurança.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Seção após login (inicialmente oculta) -->
+    <div id="logged-in-view" style="display:none;">
+        <div class="container">
+            <!-- Resumo financeiro -->
+            <div class="row mb-4">
+                <div class="col-md-4 mb-3">
+                    <div class="finance-summary income">
+                        <i class="fas fa-chart-line finance-icon"></i>
+                        <h5><i class="fas fa-arrow-down me-2"></i>Receitas</h5>
+                        <h3 id="total-income">R$ 0,00</h3>
+                        <p>Últimos 30 dias</p>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <div class="finance-summary expenses">
+                        <i class="fas fa-shopping-cart finance-icon"></i>
+                        <h5><i class="fas fa-arrow-up me-2"></i>Despesas</h5>
+                        <h3 id="total-expenses">R$ 0,00</h3>
+                        <p>Últimos 30 dias</p>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <div class="finance-summary balance">
+                        <i class="fas fa-wallet finance-icon"></i>
+                        <h5><i class="fas fa-wallet me-2"></i>Saldo</h5>
+                        <h3 id="balance">R$ 0,00</h3>
+                        <p>Atual</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Transações e Nova Transação -->
+            <div class="row">
+                <!-- Lista de transações -->
+                <div class="col-lg-8 mb-4">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h4 class="mb-0"><i class="fas fa-exchange-alt me-2"></i>Minhas Transações</h4>
+                        </div>
+                        <div class="card-body">
+                            <!-- Filtros de transações -->
+                            <div class="transaction-filters">
+                                <div class="filter-group">
+                                    <span class="filter-label">Tipo:</span>
+                                    <select class="filter-select" id="filter-type">
+                                        <option value="all">Todos</option>
+                                        <option value="income">Receitas</option>
+                                        <option value="expense">Despesas</option>
+                                    </select>
+                                </div>
+                                <div class="filter-group">
+                                    <span class="filter-label">Categoria:</span>
+                                    <select class="filter-select" id="filter-category">
+                                        <option value="all">Todas</option>
+                                        <option value="salary">Salário</option>
+                                        <option value="freelance">Freelance</option>
+                                        <option value="investments">Investimentos</option>
+                                        <option value="food">Alimentação</option>
+                                        <option value="transport">Transporte</option>
+                                        <option value="home">Moradia</option>
+                                        <option value="health">Saúde</option>
+                                        <option value="education">Educação</option>
+                                        <option value="entertainment">Lazer</option>
+                                        <option value="others">Outros</option>
+                                    </select>
+                                </div>
+                                <div class="filter-group">
+                                    <span class="filter-label">Período:</span>
+                                    <div class="filter-date">
+                                        <input type="date" id="filter-date-start" class="form-control">
+                                        <span>até</span>
+                                        <input type="date" id="filter-date-end" class="form-control">
+                                    </div>
+                                </div>
+                                <button class="btn btn-primary" id="apply-filters">
+                                    <i class="fas fa-filter me-2"></i>Aplicar Filtros
+                                </button>
+                            </div>
+                            
+                            <!-- Tabela de transações -->
+                            <div id="transactions-table-container">
+                                <table class="transactions-table">
+                                    <thead>
+                                        <tr>
+                                            <th class="transaction-icon-cell"></th>
+                                            <th>Descrição</th>
+                                            <th>Categoria</th>
+                                            <th>Data</th>
+                                            <th>Valor</th>
+                                            <th class="transaction-actions-cell">Ações</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="transactions-table-body">
+                                        <!-- Exemplo de transação -->
+                                        <tr>
+                                            <td class="transaction-icon-cell">
+                                                <div class="transaction-category-icon transaction-category-food">
+                                                    <i class="fas fa-utensils"></i>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <div class="transaction-description">Compras no Supermercado</div>
+                                            </td>
+                                            <td>Alimentação</td>
+                                            <td>
+                                                <div class="transaction-date">12/08/2023</div>
+                                            </td>
+                                            <td class="transaction-amount-cell">
+                                                <div class="transaction-amount expense">- R$ 235,90</div>
+                                            </td>
+                                            <td class="transaction-actions-cell">
+                                                <button class="action-btn edit" title="Editar">
+                                                    <i class="fas fa-edit"></i>
+                                                </button>
+                                                <button class="action-btn delete" title="Excluir">
+                                                    <i class="fas fa-trash-alt"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                        <!-- Fim do exemplo -->
+                                    </tbody>
+                                </table>
+                            </div>
+                            
+                            <div id="no-transactions" style="display:none;">
+                                <div class="text-center py-5">
+                                    <i class="fas fa-receipt fa-3x mb-3 text-muted"></i>
+                                    <p class="text-muted">Você ainda não possui transações registradas.</p>
+                                </div>
+                            </div>
+                            <div id="loading-spinner" style="display:none;">
+                                <div class="text-center py-5">
+                                    <div class="spinner-border text-primary" role="status">
+                                        <span class="visually-hidden">Carregando...</span>
+                                    </div>
+                                    <p class="mt-2">Carregando suas transações...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Formulário de nova transação -->
+                <div class="col-lg-4 mb-4">
+                    <div class="transaction-form-card">
+                        <div class="card-header">
+                            <h4><i class="fas fa-plus-circle me-2"></i>Nova Transação</h4>
+                        </div>
+                        <div class="card-body">
+                            <form id="transaction-form">
+                                <div class="form-group">
+                                    <label for="title" class="form-label">Descrição</label>
+                                    <input type="text" class="form-control" id="title" placeholder="Ex: Salário, Compras, etc.">
+                                </div>
+                                <div class="form-group">
+                                    <label for="amount" class="form-label">Valor (R$)</label>
+                                    <input type="number" class="form-control" id="amount" step="0.01" min="0" placeholder="0,00">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Tipo</label>
+                                    <div class="d-flex">
+                                        <div class="form-check me-3">
+                                            <input class="form-check-input" type="radio" name="type" id="income" value="income" checked>
+                                            <label class="form-check-label" for="income">Receita</label>
+                                        </div>
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="radio" name="type" id="expense" value="expense">
+                                            <label class="form-check-label" for="expense">Despesa</label>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label for="category" class="form-label">Categoria</label>
+                                    <select class="form-control" id="category">
+                                        <option value="">Selecione uma categoria</option>
+                                        <option value="salary">Salário</option>
+                                        <option value="freelance">Freelance</option>
+                                        <option value="investments">Investimentos</option>
+                                        <option value="food">Alimentação</option>
+                                        <option value="transport">Transporte</option>
+                                        <option value="home">Moradia</option>
+                                        <option value="health">Saúde</option>
+                                        <option value="education">Educação</option>
+                                        <option value="entertainment">Lazer</option>
+                                        <option value="others">Outros</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="date" class="form-label">Data</label>
+                                    <input type="date" class="form-control" id="date">
+                                </div>
+                                <div class="form-group">
+                                    <label for="content" class="form-label">Observações (opcional)</label>
+                                    <textarea class="form-control" id="content" rows="3" placeholder="Detalhes adicionais..."></textarea>
+                                </div>
+                                <button type="submit" class="btn btn-primary w-100 mt-3">
+                                    <i class="fas fa-plus-circle me-2"></i>Adicionar Transação
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Seção para integração com apps de mobilidade (Uber, 99) -->
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h4><i class="fas fa-link me-2"></i>Integrações com Apps</h4>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <div class="d-flex align-items-center p-3 border rounded">
+                                        <div class="me-3">
+                                            <i class="fab fa-uber fa-3x"></i>
+                                        </div>
+                                        <div class="flex-grow-1">
+                                            <h5 class="mb-1">Uber</h5>
+                                            <p class="mb-2 text-muted">Importe automaticamente seus gastos com Uber</p>
+                                            <button class="btn btn-sm btn-primary">
+                                                <i class="fas fa-plug me-1"></i> Conectar
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <div class="d-flex align-items-center p-3 border rounded">
+                                        <div class="me-3">
+                                            <i class="fas fa-taxi fa-3x"></i>
+                                        </div>
+                                        <div class="flex-grow-1">
+                                            <h5 class="mb-1">99</h5>
+                                            <p class="mb-2 text-muted">Importe automaticamente seus gastos com 99</p>
+                                            <button class="btn btn-sm btn-primary">
+                                                <i class="fas fa-plug me-1"></i> Conectar
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Login -->
+    <div class="modal fade" id="loginModal" tabindex="-1" aria-labelledby="loginModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="loginModalLabel">Entrar</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="text-center mb-4">
+                        <div class="modal-icon login-icon mx-auto mb-3">
+                            <i class="fas fa-lock"></i>
+                        </div>
+                        <h4>Bem-vindo de volta</h4>
+                        <p class="text-muted">Digite suas credenciais para acessar</p>
+                    </div>
+                    <form id="login-form">
+                        <div class="form-floating mb-3">
+                            <input type="email" class="form-control" id="email" name="email" placeholder="nome@exemplo.com" required>
+                            <label for="email">Email</label>
+                        </div>
+                        <div class="form-floating mb-3">
+                            <input type="password" class="form-control" id="senha" name="senha" placeholder="Senha" required>
+                            <label for="senha">Senha</label>
+                        </div>
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" value="" id="remember-me">
+                            <label class="form-check-label" for="remember-me">
+                                Lembrar de mim
+                            </label>
+                            <a href="#" class="forgot-password">Esqueceu a senha?</a>
+                        </div>
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary btn-lg">
+                                <i class="fas fa-sign-in-alt me-2"></i>Entrar
+                            </button>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer justify-content-center">
+                    <p class="mb-0">Não tem uma conta? <a href="#" data-bs-toggle="modal" data-bs-target="#registerModal" data-bs-dismiss="modal">Cadastre-se agora</a></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Registro -->
+    <div class="modal fade" id="registerModal" tabindex="-1" aria-labelledby="registerModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="registerModalLabel">Criar Conta</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="text-center mb-4">
+                        <div class="profile-avatar mx-auto mb-3">
+                            <i class="fas fa-user-plus"></i>
+                        </div>
+                        <h4>Crie sua conta</h4>
+                        <p class="text-muted">Preencha o formulário para começar a controlar suas finanças</p>
+                    </div>
+                    <form id="register-form">
+                        <div class="form-floating mb-3">
+                            <input type="text" class="form-control" id="nome_reg" name="nome" placeholder="Seu Nome" required>
+                            <label for="nome_reg">Nome Completo</label>
+                        </div>
+                        <div class="form-floating mb-3">
+                            <input type="email" class="form-control" id="email_reg" name="email" placeholder="nome@exemplo.com" required>
+                            <label for="email_reg">Email</label>
+                        </div>
+                        <div class="form-floating mb-3">
+                            <input type="password" class="form-control" id="senha_reg" name="senha" placeholder="Senha" required>
+                            <label for="senha_reg">Senha</label>
+                        </div>
+                        <div class="password-strength-meter">
+                            <div id="password-strength" class="password-strength weak"></div>
+                        </div>
+                        <div id="strength-text" class="strength-text mb-3">Fraca</div>
+                        <div class="form-floating mb-3">
+                            <input type="password" class="form-control" id="senha_conf" name="senha_conf" placeholder="Confirmar Senha" required>
+                            <label for="senha_conf">Confirmar Senha</label>
+                        </div>
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary btn-lg">
+                                <i class="fas fa-user-plus me-2"></i>Criar Conta
+                            </button>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer justify-content-center">
+                    <p class="mb-0">Já tem uma conta? <a href="#" data-bs-toggle="modal" data-bs-target="#loginModal" data-bs-dismiss="modal">Entrar agora</a></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Container de Alertas -->
+    <div id="alerts-container" class="alert-container"></div>
+
+    <!-- Toggle de Tema -->
+    <div class="theme-toggle" id="theme-toggle">
+        <i class="fas fa-moon"></i>
+    </div>
+
+    <!-- Modal de Gerenciamento de Categorias -->
+    <div class="modal fade" id="categoriesModal" tabindex="-1" aria-labelledby="categoriesModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="categoriesModalLabel">Gerenciar Categorias</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="categories-tabs mb-4">
+                        <ul class="nav nav-tabs" id="categoryTabs" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" id="income-tab" data-bs-toggle="tab" data-bs-target="#income-categories" type="button" role="tab" aria-controls="income-categories" aria-selected="true">Receitas</button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="expense-tab" data-bs-toggle="tab" data-bs-target="#expense-categories" type="button" role="tab" aria-controls="expense-categories" aria-selected="false">Despesas</button>
+                            </li>
+                        </ul>
+                    </div>
+                    
+                    <div class="tab-content" id="categoryTabsContent">
+                        <!-- Categorias de Receita -->
+                        <div class="tab-pane fade show active" id="income-categories" role="tabpanel" aria-labelledby="income-tab">
+                            <div class="categories-list mb-4" id="income-categories-list">
+                                <div class="text-center py-3 loading-categories">
+                                    <div class="spinner-border text-primary" role="status">
+                                        <span class="visually-hidden">Carregando...</span>
+                                    </div>
+                                </div>
+                                <!-- Lista de categorias de receita será inserida aqui -->
+                            </div>
+                        </div>
+                        
+                        <!-- Categorias de Despesa -->
+                        <div class="tab-pane fade" id="expense-categories" role="tabpanel" aria-labelledby="expense-tab">
+                            <div class="categories-list mb-4" id="expense-categories-list">
+                                <div class="text-center py-3 loading-categories">
+                                    <div class="spinner-border text-primary" role="status">
+                                        <span class="visually-hidden">Carregando...</span>
+                                    </div>
+                                </div>
+                                <!-- Lista de categorias de despesa será inserida aqui -->
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <hr>
+                    
+                    <!-- Formulário para adicionar nova categoria -->
+                    <h5 class="mb-3">Adicionar Nova Categoria</h5>
+                    <form id="new-category-form">
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <div class="form-floating">
+                                    <input type="text" class="form-control" id="category-name" placeholder="Nome da categoria" required>
+                                    <label for="category-name">Nome da Categoria</label>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="form-floating">
+                                    <select class="form-select" id="category-type" required>
+                                        <option value="income">Receita</option>
+                                        <option value="expense">Despesa</option>
+                                    </select>
+                                    <label for="category-type">Tipo</label>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="form-floating">
+                                    <select class="form-select" id="category-icon" required>
+                                        <option value="money-bill-wave">Dinheiro</option>
+                                        <option value="credit-card">Cartão</option>
+                                        <option value="piggy-bank">Cofrinho</option>
+                                        <option value="gift">Presente</option>
+                                        <option value="briefcase">Trabalho</option>
+                                        <option value="chart-line">Investimentos</option>
+                                        <option value="building">Imóvel</option>
+                                        <option value="car">Carro</option>
+                                        <option value="utensils">Comida</option>
+                                        <option value="tshirt">Roupas</option>
+                                        <option value="home">Casa</option>
+                                        <option value="shopping-cart">Compras</option>
+                                        <option value="graduation-cap">Educação</option>
+                                        <option value="heartbeat">Saúde</option>
+                                        <option value="plane">Viagem</option>
+                                        <option value="gamepad">Jogos</option>
+                                        <option value="film">Entretenimento</option>
+                                        <option value="mobile-alt">Celular</option>
+                                        <option value="laptop">Computador</option>
+                                        <option value="file-invoice-dollar">Contas</option>
+                                    </select>
+                                    <label for="category-icon">Ícone</label>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <button type="submit" class="btn btn-primary h-100 w-100">
+                                    <i class="fas fa-plus-circle me-2"></i>Adicionar
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap Bundle with Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- App JS -->
+    <script src="js/app.js"></script>
+</body>
+</html> 
