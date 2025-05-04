@@ -25,11 +25,28 @@
   force = true
 
 [[redirects]]
+  # Assegura que arquivos estáticos sejam servidos diretamente
+  from = "/js/*"
+  to = "/js/:splat"
+  status = 200
+
+[[redirects]]
+  # Assegura que arquivos estáticos sejam servidos diretamente
+  from = "/css/*"
+  to = "/css/:splat"
+  status = 200
+
+[[redirects]]
+  # Assegura que o arquivo de estilo seja servido diretamente
+  from = "/styles.css"
+  to = "/styles.css"
+  status = 200
+
+[[redirects]]
   # Redirecionar chamadas sem rota para o index.html (SPA)
   from = "/*"
   to = "/index.html"
   status = 200
-  conditions = {Role = ["anonymous"]}
 
 # Configurações de cabeçalhos
 [[headers]]
