@@ -392,6 +392,10 @@
                         <p class="text-muted">Digite suas credenciais para acessar</p>
                     </div>
                     <form id="login-form">
+                        <div class="alert alert-danger d-none" id="loginError">
+                            <i class="fas fa-exclamation-circle me-2"></i>
+                            <span id="loginErrorMessage">Erro ao fazer login</span>
+                        </div>
                         <div class="form-floating mb-3">
                             <input type="email" class="form-control" id="email" name="email" placeholder="nome@exemplo.com" required>
                             <label for="email">Email</label>
@@ -438,6 +442,10 @@
                         <p class="text-muted">Preencha o formulário para começar a controlar suas finanças</p>
                     </div>
                     <form id="register-form">
+                        <div class="alert alert-danger d-none" id="cadastroError">
+                            <i class="fas fa-exclamation-circle me-2"></i>
+                            <span id="cadastroErrorMessage">Erro ao criar cadastro</span>
+                        </div>
                         <div class="form-floating mb-3">
                             <input type="text" class="form-control" id="nome_reg" name="nome" placeholder="Seu Nome" required>
                             <label for="nome_reg">Nome Completo</label>

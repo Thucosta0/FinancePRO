@@ -171,6 +171,10 @@ async function handleLogin(event) {
     const senha = document.getElementById('senha').value;
     
     try {
+        // Ocultar mensagem de erro anterior
+        const loginError = document.getElementById('loginError');
+        loginError.classList.add('d-none');
+        
         const response = await fetch(`${API_BASE_URL}/login`, {
             method: 'POST',
             headers: {
@@ -182,6 +186,9 @@ async function handleLogin(event) {
         const data = await response.json();
         
         if (!response.ok) {
+            // Mostrar erro específico
+            document.getElementById('loginErrorMessage').textContent = data.message || 'Erro ao fazer login';
+            loginError.classList.remove('d-none');
             throw new Error(data.message || 'Erro ao fazer login');
         }
         
@@ -201,6 +208,7 @@ async function handleLogin(event) {
         
         showAlert(`Bem-vindo, ${currentUser.nome}!`, 'success');
     } catch (error) {
+        console.error("Erro de login:", error);
         showAlert(`Erro: ${error.message}`, 'danger');
     }
 }
@@ -214,9 +222,15 @@ async function handleRegister(event) {
     const senha = document.getElementById('senha_reg').value;
     const senhaConf = document.getElementById('senha_conf').value;
     
+    // Ocultar mensagem de erro anterior
+    const cadastroError = document.getElementById('cadastroError');
+    cadastroError.classList.add('d-none');
+    
     // Validar senhas
     if (senha !== senhaConf) {
-        return showAlert('As senhas não coincidem', 'danger');
+        document.getElementById('cadastroErrorMessage').textContent = 'As senhas não coincidem';
+        cadastroError.classList.remove('d-none');
+        return;
     }
     
     try {
@@ -231,6 +245,9 @@ async function handleRegister(event) {
         const data = await response.json();
         
         if (!response.ok) {
+            // Mostrar erro específico
+            document.getElementById('cadastroErrorMessage').textContent = data.message || 'Erro ao registrar usuário';
+            cadastroError.classList.remove('d-none');
             throw new Error(data.message || 'Erro ao registrar usuário');
         }
         
@@ -249,6 +266,7 @@ async function handleRegister(event) {
         
         showAlert(`Conta criada com sucesso! Bem-vindo, ${nome}!`, 'success');
     } catch (error) {
+        console.error("Erro de registro:", error);
         showAlert(`Erro: ${error.message}`, 'danger');
     }
 }
