@@ -10,6 +10,7 @@ yarn-error.log
 .env.development.local
 .env.test.local
 .env.production.local
+.env.atlas
 
 # Logs
 logs
@@ -28,3 +29,9 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
+
+# Arquivos temporários e de teste
+test-*.js
+*-test.js
+teste-*.html
+*.test.js

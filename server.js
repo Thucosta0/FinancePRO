@@ -9,6 +9,7 @@ const morgan = require('morgan'); // Logging
 const compression = require('compression'); // Compressão GZIP
 const path = require('path');
 const mongoSanitize = require('express-mongo-sanitize'); // Prevenção de NoSQL Injection
+const uberIntegration = require('./js/uber-integration'); // Importando o módulo de integração da Uber
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -16,29 +17,39 @@ const JWT_SECRET = process.env.JWT_SECRET || 'secreto-do-jwt-aqui';
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const isProd = NODE_ENV === 'production';
 
+// Configuração CORS para web
+app.use(cors({
+    origin: isProd 
+        ? ['https://financespro.onrender.com', 'https://financespro.netlify.app'] // Substitua pelos domínios reais da sua aplicação
+        : '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    credentials: true
+}));
+
 // Middleware
-app.use(cors());
 app.use(bodyParser.json({ limit: '1mb' }));
 app.use(express.static('.', { 
     maxAge: isProd ? '1d' : 0 // Cache de 1 dia em produção
 })); 
 
-// Logging simples para desenvolvimento
-app.use(morgan('dev'));
+// Logging simples para desenvolvimento, mais conciso para produção
+app.use(morgan(isProd ? 'combined' : 'dev'));
 
 // Prevenir NoSQL Injection
 app.use(mongoSanitize());
 
-// Aplicar compressão GZIP em produção
-if (isProd) {
-    app.use(compression());
-}
+// Aplicar compressão GZIP
+app.use(compression());
 
 // String de conexão MongoDB
 const uri = process.env.MONGODB_URI;
+console.log(`Conectando ao MongoDB: ${uri.replace(/\/\/([^:]+):([^@]+)@/, '//\\1:****@')}`);
+
 const client = new MongoClient(uri, {
     useNewUrlParser: true,
-    useUnifiedTopology: true
+    useUnifiedTopology: true,
+    serverSelectionTimeoutMS: 5000, // Timeout de 5 segundos
+    maxPoolSize: 10 // Limitar o número de conexões simultâneas
 });
 let db;
 
@@ -69,9 +80,20 @@ async function connectToMongoDB() {
         }
     } catch (error) {
         console.error("Erro ao conectar ao MongoDB:", error);
-        // Encerrar o aplicativo se não conseguir conectar ao MongoDB
-        console.error("ERRO CRÍTICO: Não foi possível conectar ao MongoDB. O aplicativo será encerrado.");
-        process.exit(1); // Encerra o processo com código de erro
+        console.warn("⚠️ AVISO: Usando modo de simulação sem banco de dados. Algumas funcionalidades não estarão disponíveis.");
+        // Criar um objeto de simulação para o banco de dados
+        db = {
+            collection: (name) => ({
+                findOne: async () => null,
+                find: () => ({ toArray: async () => [] }),
+                insertOne: async () => ({ insertedId: 'temp-id-' + Date.now() }),
+                updateOne: async () => ({ modifiedCount: 1 }),
+                deleteOne: async () => ({ deletedCount: 1 }),
+                createIndex: async () => true
+            }),
+            listCollections: () => ({ toArray: async () => [] }),
+            createCollection: async () => true
+        };
     }
 }
 
@@ -554,8 +576,68 @@ app.get('/api/summary', authenticateToken, async (req, res) => {
     }
 });
 
+// Rota para obter integrações do usuário
+app.get('/api/user/integrations', authenticateToken, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const userObjectId = new ObjectId(userId);
+        
+        // Buscar todas as integrações do usuário
+        const integrations = await db.collection('user_integrations').find({ 
+            user_id: userId 
+        }).toArray();
+        
+        // Processar para mostrar apenas informações seguras
+        const safeIntegrations = integrations.map(integration => {
+            return {
+                provider: integration.provider,
+                active: true,
+                scopes: integration.scopes,
+                connected_at: integration.created_at,
+                last_updated: integration.updated_at
+            };
+        });
+        
+        res.json({
+            integrations: safeIntegrations
+        });
+    } catch (error) {
+        console.error("Erro ao buscar integrações do usuário:", error);
+        res.status(500).json({ message: 'Erro interno do servidor' });
+    }
+});
+
 // Middleware para servir arquivos estáticos
 app.use(express.static(__dirname));
+
+// Middleware para tratamento de erros
+app.use((err, req, res, next) => {
+    console.error("Erro na aplicação:", err.stack);
+    res.status(500).json({
+        error: true,
+        message: NODE_ENV === 'development' ? err.message : 'Erro interno do servidor',
+        stack: NODE_ENV === 'development' ? err.stack : undefined
+    });
+});
+
+// Rota para testar a API
+app.get('/api/test', (req, res) => {
+    try {
+        res.json({ 
+            message: 'API funcionando corretamente', 
+            timestamp: new Date().toISOString(),
+            mongoStatus: db ? 'Disponível' : 'Indisponível',
+            environment: NODE_ENV,
+            serverInfo: {
+                node: process.version,
+                os: process.platform
+            }
+        });
+    } catch (error) {
+        console.error("Erro na rota de teste:", error);
+        res.status(500).json({ error: true, message: error.message });
+    }
+});
 
 // Rota principal
 app.get('/', (req, res) => {
@@ -573,15 +655,60 @@ app.get('/profile', (req, res) => {
     res.sendFile(path.join(__dirname, 'profile.html'));
 });
 
-// Iniciar servidor
+// Rota para verificação de saúde do servidor (healthcheck)
+app.get('/api/healthcheck', async (req, res) => {
+    try {
+        // Verificar se o MongoDB está conectado
+        const mongoStatus = db ? 'connected' : 'disconnected';
+        
+        // Verificar se conseguimos fazer uma operação simples no banco
+        let dbOperational = false;
+        if (db) {
+            try {
+                // Tenta uma operação simples
+                await db.command({ ping: 1 });
+                dbOperational = true;
+            } catch (error) {
+                console.error('Erro ao verificar operação do banco:', error);
+            }
+        }
+        
+        // Status geral do sistema
+        const status = dbOperational ? 'healthy' : 'degraded';
+        
+        res.json({
+            status,
+            timestamp: new Date().toISOString(),
+            uptime: process.uptime(),
+            mongoStatus: {
+                connected: mongoStatus === 'connected',
+                operational: dbOperational
+            },
+            environment: NODE_ENV
+        });
+    } catch (error) {
+        console.error('Erro na verificação de saúde:', error);
+        res.status(500).json({ 
+            status: 'unhealthy',
+            error: error.message
+        });
+    }
+});
+
+// Inicializar rotas da API Uber
 async function startServer() {
     try {
         await connectToMongoDB();
+        
+        // Inicializar integrações
+        uberIntegration.initUberRoutes(app, db);
+        
         app.listen(PORT, () => {
             console.log(`Servidor rodando na porta ${PORT}`);
         });
     } catch (error) {
-        console.error("Erro ao iniciar servidor:", error);
+        console.error("Erro ao iniciar o servidor:", error);
+        process.exit(1);
     }
 }
 

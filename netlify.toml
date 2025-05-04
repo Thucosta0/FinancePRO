@@ -1,0 +1,48 @@
+# Configuração Netlify para FinançasPRO
+
+[build]
+  # Diretório que contém os arquivos estáticos (HTML, CSS, JS)
+  publish = "public"
+  # Comando para construir o site estático
+  command = "npm run build"
+  # Diretório onde as funções serverless estão localizadas
+  functions = "netlify/functions"
+
+# Configurações específicas para o ambiente de produção
+[context.production]
+  environment = { NODE_ENV = "production" }
+
+# Configurações específicas para o ambiente de desenvolvimento
+[context.branch-deploy]
+  environment = { NODE_ENV = "development" }
+
+# Configurações de redirecionamento
+[[redirects]]
+  # Redirecionar chamadas de API para funções serverless
+  from = "/api/*"
+  to = "/.netlify/functions/api/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  # Redirecionar chamadas de integração com Uber para função específica
+  from = "/api/integrations/uber/*"
+  to = "/.netlify/functions/uber-integration/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  # Redirecionar chamadas sem rota para o index.html (SPA)
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Configurações de cabeçalhos
+[[headers]]
+  # Configurar cabeçalhos para todos os arquivos no diretório /public
+  for = "/*"
+    [headers.values]
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"
+    X-Content-Type-Options = "nosniff"
+    Content-Security-Policy = "default-src 'self'; connect-src 'self' https://*.mongodb.net https://api.uber.com; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" 
