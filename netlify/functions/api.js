@@ -322,39 +322,104 @@ const routes = {
   
   // Rota de registro
   'POST /register': async (event) => {
+    console.log('[Register] ===== INICIANDO PROCESSO DE REGISTRO =====');
+    console.log('[Register] Headers:', JSON.stringify(event.headers));
+    
     try {
-      console.log('[Register] Iniciando processamento...');
-      
       let requestBody;
       try {
         requestBody = JSON.parse(event.body);
-        console.log('[Register] Corpo da requisição parseado com sucesso');
+        console.log('[Register] Corpo da requisição parseado com sucesso:', JSON.stringify(requestBody, null, 2));
       } catch (err) {
-        console.error('[Register] Erro ao processar JSON do corpo:', err.message);
+        console.error('[Register] ERRO AO PROCESSAR JSON DO CORPO:', err.message);
         return {
           statusCode: 400,
-          body: JSON.stringify({ message: 'Formato JSON inválido' })
+          body: JSON.stringify({ 
+            message: 'Formato JSON inválido',
+            error: err.message
+          })
         };
       }
       
       const { nome, email, senha } = requestBody;
-      console.log(`[Register] Tentativa para email: ${email}`);
+      console.log(`[Register] Tentativa para nome: ${nome}, email: ${email}`);
       
       if (!nome || !email || !senha) {
-        console.log('[Register] Dados incompletos');
+        const camposFaltantes = [];
+        if (!nome) camposFaltantes.push('nome');
+        if (!email) camposFaltantes.push('email');
+        if (!senha) camposFaltantes.push('senha');
+        
+        console.log(`[Register] Dados incompletos. Campos faltantes: ${camposFaltantes.join(', ')}`);
         return {
           statusCode: 400,
-          body: JSON.stringify({ message: 'Nome, email e senha são obrigatórios' })
+          body: JSON.stringify({ 
+            message: 'Nome, email e senha são obrigatórios',
+            camposFaltantes 
+          })
+        };
+      }
+
+      // Validação de email simples
+      if (!email.includes('@') || !email.includes('.')) {
+        console.log(`[Register] Email inválido: ${email}`);
+        return {
+          statusCode: 400,
+          body: JSON.stringify({ message: 'Formato de email inválido' })
         };
       }
       
+      // Conexão ao banco de dados
       console.log('[Register] Conectando ao banco de dados...');
-      const { db } = await connectToDatabase();
-      console.log('[Register] Conexão estabelecida');
+      let db;
+      try {
+        const dbConnection = await connectToDatabase();
+        db = dbConnection.db;
+        console.log('[Register] Conexão ao banco de dados estabelecida com sucesso');
+      } catch (dbError) {
+        console.error('[Register] ERRO NA CONEXÃO COM MONGODB:', dbError.message);
+        console.error('[Register] Stack trace:', dbError.stack);
+        return {
+          statusCode: 500,
+          body: JSON.stringify({ 
+            message: 'Erro interno no servidor - falha na conexão ao banco de dados',
+            details: dbError.message
+          })
+        };
+      }
+      
+      // Verificar se a coleção "users" existe, e criar se não existir
+      try {
+        const collections = await db.listCollections({ name: 'users' }).toArray();
+        if (collections.length === 0) {
+          console.log('[Register] Coleção "users" não encontrada, criando...');
+          await db.createCollection('users');
+          console.log('[Register] Coleção "users" criada com sucesso');
+        } else {
+          console.log('[Register] Coleção "users" já existe');
+        }
+      } catch (collectionError) {
+        console.error('[Register] ERRO AO VERIFICAR/CRIAR COLEÇÃO:', collectionError.message);
+        // Continuar mesmo com erro, pois pode ser apenas um problema de permissão para listar coleções
+      }
       
       // Verificar se o email já está cadastrado
-      console.log('[Register] Verificando duplicidade de email...');
-      const existingUser = await db.collection('users').findOne({ email });
+      let existingUser;
+      try {
+        console.log(`[Register] Verificando se o email "${email}" já está cadastrado...`);
+        existingUser = await db.collection('users').findOne({ email });
+        console.log('[Register] Verificação de email concluída:', existingUser ? 'Email já cadastrado' : 'Email disponível');
+      } catch (queryError) {
+        console.error('[Register] ERRO AO VERIFICAR EMAIL:', queryError.message);
+        return {
+          statusCode: 500,
+          body: JSON.stringify({ 
+            message: 'Erro interno no servidor - falha ao verificar email',
+            details: queryError.message
+          })
+        };
+      }
+      
       if (existingUser) {
         console.log('[Register] Email já em uso');
         return {
@@ -364,43 +429,89 @@ const routes = {
       }
       
       // Criptografar a senha
-      console.log('[Register] Criptografando senha...');
-      const hashedPassword = await bcrypt.hash(senha, 10);
+      let hashedPassword;
+      try {
+        console.log('[Register] Criptografando senha...');
+        hashedPassword = await bcrypt.hash(senha, 10);
+        console.log('[Register] Senha criptografada com sucesso');
+      } catch (hashError) {
+        console.error('[Register] ERRO AO CRIPTOGRAFAR SENHA:', hashError.message);
+        return {
+          statusCode: 500,
+          body: JSON.stringify({ 
+            message: 'Erro interno no servidor - falha ao criptografar senha',
+            details: hashError.message
+          })
+        };
+      }
       
       // Criar novo usuário
-      console.log('[Register] Inserindo novo usuário no banco...');
-      const result = await db.collection('users').insertOne({
-        nome,
-        email,
-        senha: hashedPassword,
-        createdAt: new Date()
-      });
+      let result;
+      try {
+        console.log('[Register] Inserindo novo usuário no banco...');
+        const newUser = {
+          nome,
+          email,
+          senha: hashedPassword,
+          createdAt: new Date()
+        };
+        console.log('[Register] Objeto de usuário a inserir:', JSON.stringify(newUser, null, 2));
+        
+        result = await db.collection('users').insertOne(newUser);
+        console.log('[Register] Usuário inserido com sucesso. ID:', result.insertedId);
+      } catch (insertError) {
+        console.error('[Register] ERRO AO INSERIR USUÁRIO:', insertError.message);
+        console.error('[Register] Stack trace:', insertError.stack);
+        return {
+          statusCode: 500,
+          body: JSON.stringify({ 
+            message: 'Erro interno no servidor - falha ao inserir usuário',
+            details: insertError.message
+          })
+        };
+      }
       
       // Gerar token JWT
-      console.log('[Register] Gerando token JWT...');
-      const token = jwt.sign(
-        { id: result.insertedId, email },
-        JWT_SECRET,
-        { expiresIn: '7d' }
-      );
+      let token;
+      try {
+        console.log('[Register] Gerando token JWT...');
+        token = jwt.sign(
+          { 
+            id: result.insertedId.toString(), // Convertendo para string para evitar problemas
+            email 
+          },
+          JWT_SECRET,
+          { expiresIn: '7d' }
+        );
+        console.log('[Register] Token JWT gerado com sucesso');
+      } catch (tokenError) {
+        console.error('[Register] ERRO AO GERAR TOKEN JWT:', tokenError.message);
+        // Continuar mesmo com erro no token, apenas logar o problema
+        token = null;
+      }
       
-      console.log('[Register] Usuário registrado com sucesso!');
+      console.log('[Register] REGISTRO CONCLUÍDO COM SUCESSO!');
       return {
         statusCode: 201,
         body: JSON.stringify({
           message: 'Usuário registrado com sucesso',
           token,
-          user: { id: result.insertedId, nome, email }
+          user: { 
+            id: result.insertedId.toString(), 
+            nome, 
+            email 
+          }
         })
       };
     } catch (error) {
-      console.error("[Register] ERRO:", error.message);
+      console.error("[Register] ERRO GLOBAL:", error.message);
       console.error("[Register] Stack trace:", error.stack);
       return {
         statusCode: 500,
         body: JSON.stringify({ 
           message: 'Erro interno do servidor',
-          details: error.message
+          details: error.message,
+          stack: error.stack || 'Sem stack trace disponível'
         })
       };
     }
