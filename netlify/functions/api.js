@@ -51,7 +51,7 @@ const authenticateToken = async (authHeader) => {
 // Rotas da API
 const routes = {
   // Rota de teste
-  'GET /api/test': async () => {
+  'GET /test': async () => {
     return {
       statusCode: 200,
       body: JSON.stringify({
@@ -63,7 +63,7 @@ const routes = {
   },
   
   // Rota de healthcheck
-  'GET /api/healthcheck': async () => {
+  'GET /healthcheck': async () => {
     try {
       const db = await connectToDatabase();
       let dbOperational = false;
@@ -99,7 +99,7 @@ const routes = {
   },
   
   // Rota de registro
-  'POST /api/register': async (event) => {
+  'POST /register': async (event) => {
     try {
       const { nome, email, senha } = JSON.parse(event.body);
       
@@ -157,7 +157,7 @@ const routes = {
   },
   
   // Rota de login
-  'POST /api/login': async (event) => {
+  'POST /login': async (event) => {
     try {
       const { email, senha } = JSON.parse(event.body);
       
@@ -213,7 +213,7 @@ const routes = {
   },
   
   // Rota para obter usuário atual
-  'GET /api/user/me': async (event) => {
+  'GET /user/me': async (event) => {
     try {
       const authResult = await authenticateToken(event.headers.authorization);
       
@@ -261,7 +261,8 @@ exports.handler = async (event, context) => {
   context.callbackWaitsForEmptyEventLoop = false;
   
   // Construir identificador de rota
-  const routeKey = `${event.httpMethod} ${event.path}`;
+  const path = event.path.replace('/.netlify/functions/api', '');
+  const routeKey = `${event.httpMethod} ${path}`;
   
   // Adicionar cabeçalhos CORS
   const headers = {

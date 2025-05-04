@@ -112,7 +112,7 @@ async function checkAuthentication() {
     
     if (token) {
         try {
-            const response = await fetch(`${API_BASE_URL}/api/user/me`, {
+            const response = await fetch(`${API_BASE_URL}/user/me`, {
                 headers: {
                     'Authorization': `Bearer ${token}`
                 }
@@ -150,7 +150,7 @@ async function handleLogin(event) {
     const senha = document.getElementById('senha').value;
     
     try {
-        const response = await fetch(`${API_BASE_URL}/api/login`, {
+        const response = await fetch(`${API_BASE_URL}/login`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -199,7 +199,7 @@ async function handleRegister(event) {
     }
     
     try {
-        const response = await fetch(`${API_BASE_URL}/api/register`, {
+        const response = await fetch(`${API_BASE_URL}/register`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -261,7 +261,7 @@ async function handleAddTransaction(event) {
     
     try {
         const token = localStorage.getItem('authToken');
-        const response = await fetch(`${API_BASE_URL}/api/transactions`, {
+        const response = await fetch(`${API_BASE_URL}/transactions`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -303,7 +303,7 @@ async function handleDeleteTransaction(id) {
     
     try {
         const token = localStorage.getItem('authToken');
-        const response = await fetch(`${API_BASE_URL}/api/transactions/${id}`, {
+        const response = await fetch(`${API_BASE_URL}/transactions/${id}`, {
             method: 'DELETE',
             headers: {
                 'Authorization': `Bearer ${token}`
@@ -335,7 +335,7 @@ async function loadCategories() {
     
     try {
         const token = localStorage.getItem('authToken');
-        const response = await fetch(`${API_BASE_URL}/api/categories`, {
+        const response = await fetch(`${API_BASE_URL}/categories`, {
             headers: {
                 'Authorization': `Bearer ${token}`
             }
@@ -447,7 +447,7 @@ async function handleAddCategory(event) {
     
     try {
         const token = localStorage.getItem('authToken');
-        const response = await fetch(`${API_BASE_URL}/api/categories`, {
+        const response = await fetch(`${API_BASE_URL}/categories`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -490,7 +490,7 @@ async function handleDeleteCategory(id) {
     
     try {
         const token = localStorage.getItem('authToken');
-        const response = await fetch(`${API_BASE_URL}/api/categories/${id}`, {
+        const response = await fetch(`${API_BASE_URL}/categories/${id}`, {
             method: 'DELETE',
             headers: {
                 'Authorization': `Bearer ${token}`
@@ -618,7 +618,7 @@ async function handleFilterTransactions() {
         const token = localStorage.getItem('authToken');
         
         // Construir URL com parâmetros
-        let url = `${API_BASE_URL}/api/transactions`;
+        let url = `${API_BASE_URL}/transactions`;
         const params = new URLSearchParams();
         
         if (filterTypeSelect.value && filterTypeSelect.value !== 'all') {
@@ -676,7 +676,7 @@ async function loadUserData() {
         await loadCategories();
         
         // Carregar transações
-        const transactionsResponse = await fetch(`${API_BASE_URL}/api/transactions`, {
+        const transactionsResponse = await fetch(`${API_BASE_URL}/transactions`, {
             headers: {
                 'Authorization': `Bearer ${token}`
             }
@@ -690,7 +690,7 @@ async function loadUserData() {
         displayTransactionsTable(transactions);
         
         // Carregar resumo financeiro
-        const summaryResponse = await fetch(`${API_BASE_URL}/api/summary`, {
+        const summaryResponse = await fetch(`${API_BASE_URL}/summary`, {
             headers: {
                 'Authorization': `Bearer ${token}`
             }
