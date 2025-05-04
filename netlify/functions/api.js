@@ -8,6 +8,7 @@ const fetch = require('node-fetch');
 const MONGODB_URI = 'mongodb+srv://thucosta:Thu3048%23@to-my-life.vnkwkct.mongodb.net/?retryWrites=true&w=majority&appName=To-my-life';
 const JWT_SECRET = 'financaspro-secure-token-2024';
 const DB_NAME = 'financas-pro';
+const FALLBACK_DB_NAME = 'test'; // Banco de dados alternativo
 
 // Log detalhado das configurações
 console.log('====== INICIANDO API FINANCASPRO ======');
@@ -20,53 +21,105 @@ console.log('======================================');
 // Cliente MongoDB (global)
 let cachedDb = null;
 let cachedClient = null;
+let currentDbName = DB_NAME;
 
-// Função para conectar ao MongoDB (simplificada)
+// Função para conectar ao MongoDB (melhorada)
 async function connectToDatabase() {
   console.log('[MongoDB] Tentando conectar ao MongoDB...');
   
   if (cachedDb) {
-    console.log('[MongoDB] Usando conexão MongoDB em cache');
+    console.log(`[MongoDB] Usando conexão MongoDB em cache (banco: ${currentDbName})`);
     return { client: cachedClient, db: cachedDb };
   }
   
   try {
-    console.log('[MongoDB] Criando nova conexão com string fixa...');
+    console.log('[MongoDB] Criando nova conexão...');
     
-    // Opções simplificadas
+    // URI Limpa sem parâmetros desnecessários
+    const cleanUri = MONGODB_URI
+      .replace('retryWrites=true&', '')  // Removendo parâmetros que podem causar problemas
+      .replace('w=majority&', '')
+      .replace('appName=To-my-life', '');
+      
+    console.log('[MongoDB] Usando URI simplificada para conexão');
+    
+    // Opções simplificadas mas robustas
     const options = {
       useNewUrlParser: true,
       useUnifiedTopology: true,
-      connectTimeoutMS: 30000,
-      socketTimeoutMS: 45000
+      connectTimeoutMS: 60000,        // Aumentando timeout para 60 segundos
+      socketTimeoutMS: 60000,         // Aumentando timeout para 60 segundos
+      serverSelectionTimeoutMS: 60000 // Aumentando timeout para 60 segundos
     };
     
-    const client = new MongoClient(MONGODB_URI, options);
-    console.log('[MongoDB] Inicializando conexão...');
+    // Criando cliente MongoDB
+    const client = new MongoClient(cleanUri, options);
+    console.log('[MongoDB] Iniciando conexão com cliente...');
+    
+    // Conectar ao cliente
     await client.connect();
-    console.log('[MongoDB] Conexão estabelecida com sucesso!');
+    console.log('[MongoDB] Cliente conectado com sucesso!');
     
-    const db = client.db(DB_NAME);
-    console.log(`[MongoDB] Banco de dados "${DB_NAME}" selecionado`);
-    
-    cachedClient = client;
-    cachedDb = db;
-    
-    console.log('[MongoDB] Enviando ping para testar conexão...');
-    await db.command({ ping: 1 });
-    console.log('[MongoDB] Ping bem-sucedido! Banco de dados operacional.');
-    
-    return { client, db };
+    // Tentar usar o banco principal
+    try {
+      console.log(`[MongoDB] Tentando acessar banco "${DB_NAME}"...`);
+      const mainDb = client.db(DB_NAME);
+      
+      // Verificar se conseguimos fazer operações básicas
+      await mainDb.command({ ping: 1 });
+      console.log(`[MongoDB] Banco "${DB_NAME}" acessado com sucesso!`);
+      
+      cachedClient = client;
+      cachedDb = mainDb;
+      currentDbName = DB_NAME;
+      
+      return { client, db: mainDb };
+    } catch (mainDbError) {
+      console.warn(`[MongoDB] Não foi possível acessar o banco "${DB_NAME}": ${mainDbError.message}`);
+      console.log(`[MongoDB] Tentando banco alternativo "${FALLBACK_DB_NAME}"...`);
+      
+      // Tentar usar o banco alternativo
+      try {
+        const fallbackDb = client.db(FALLBACK_DB_NAME);
+        await fallbackDb.command({ ping: 1 });
+        console.log(`[MongoDB] Banco alternativo "${FALLBACK_DB_NAME}" acessado com sucesso!`);
+        
+        // Tentar criar a coleção users no banco alternativo
+        try {
+          await fallbackDb.createCollection('users');
+          console.log(`[MongoDB] Coleção "users" criada no banco "${FALLBACK_DB_NAME}"`);
+        } catch (collectionError) {
+          // Ignorar erro se a coleção já existir
+          console.log(`[MongoDB] Nota: ${collectionError.message}`);
+        }
+        
+        cachedClient = client;
+        cachedDb = fallbackDb;
+        currentDbName = FALLBACK_DB_NAME;
+        
+        return { client, db: fallbackDb };
+      } catch (fallbackDbError) {
+        console.error(`[MongoDB] Também não foi possível acessar banco alternativo: ${fallbackDbError.message}`);
+        throw new Error(`Não foi possível acessar nenhum banco de dados: ${mainDbError.message} / ${fallbackDbError.message}`);
+      }
+    }
   } catch (error) {
-    console.error('[MongoDB] ERRO AO CONECTAR:', error.message);
+    console.error('[MongoDB] ERRO CRÍTICO DE CONEXÃO:', error.message);
     console.error('[MongoDB] Stack trace:', error.stack);
     
+    // Diagnóstico de problemas comuns
     if (error.message.includes('ENOTFOUND') || error.message.includes('connection timed out')) {
-      console.error('[MongoDB] ERRO DE CONECTIVIDADE: IP possivelmente não está na whitelist do MongoDB Atlas');
-      console.error('[MongoDB] Adicione 0.0.0.0/0 temporariamente na whitelist do MongoDB Atlas');
+      console.error('[MongoDB] ERRO DE REDE: Não foi possível resolver o hostname ou conectar ao servidor MongoDB');
+      console.error('[MongoDB] Verifique se:');
+      console.error('[MongoDB] 1. O hostname do MongoDB está correto');
+      console.error('[MongoDB] 2. Seu IP está na whitelist do MongoDB Atlas (adicione 0.0.0.0/0)');
+    } else if (error.message.includes('Authentication failed')) {
+      console.error('[MongoDB] ERRO DE AUTENTICAÇÃO: Nome de usuário ou senha incorretos');
+    } else if (error.message.includes('not authorized')) {
+      console.error('[MongoDB] ERRO DE PERMISSÃO: O usuário não tem permissão para acessar o banco de dados');
     }
     
-    throw new Error(`Falha na conexão com MongoDB: ${error.message}`);
+    throw new Error(`Falha crítica na conexão com MongoDB: ${error.message}`);
   }
 }
 
