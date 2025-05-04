@@ -18,6 +18,13 @@
 
 # Configurações de redirecionamento
 [[redirects]]
+  # Redirecionar chamadas diretas para a API
+  from = "/.netlify/functions/api/*"
+  to = "/.netlify/functions/api/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
   # Redirecionar chamadas de API para funções serverless
   from = "/api/*"
   to = "/.netlify/functions/api/:splat"
