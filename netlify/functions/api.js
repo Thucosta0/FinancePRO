@@ -1,14 +1,21 @@
 // Função principal para gerenciar a API do FinançasPRO no Netlify
-const { MongoClient, ObjectId } = require('mongodb');
+const { createClient } = require('@supabase/supabase-js');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-const fetch = require('node-fetch');
 
-// ===== SOLUÇÃO TEMPORÁRIA: MODO OFFLINE =====
-// Essa é uma solução para permitir o uso do sistema sem MongoDB
-const MODO_OFFLINE = true; // Forçar modo offline para garantir funcionamento
+// ===== CONFIGURAÇÕES SUPABASE =====
+// Substitua pelos dados do seu projeto Supabase
+const SUPABASE_URL = 'https://sua-url-do-projeto.supabase.co';
+const SUPABASE_KEY = 'sua-chave-anon-key';
 
-// DB Local (Apenas para solução temporária - dados são perdidos a cada deploy)
+// Opção de modo offline (fallback se Supabase não funcionar)
+const MODO_OFFLINE = true; // Mude para false depois de configurar o Supabase
+
+// Inicializar o cliente Supabase
+const supabase = SUPABASE_URL && SUPABASE_KEY ? 
+  createClient(SUPABASE_URL, SUPABASE_KEY) : null;
+
+// DB Local (Apenas para solução temporária - modo offline)
 const dbLocal = {
   users: [
     {
@@ -28,7 +35,8 @@ const JWT_SECRET = 'financaspro-secure-token-2024';
 
 // Log de inicialização
 console.log('====== INICIANDO API FINANCASPRO ======');
-console.log('Modo offline forçado:', MODO_OFFLINE ? 'SIM' : 'NÃO');
+console.log('Modo Supabase:', supabase ? 'ATIVO' : 'INATIVO');
+console.log('Modo offline (fallback):', MODO_OFFLINE ? 'ATIVO' : 'INATIVO');
 console.log('Ambiente:', process.env.NODE_ENV || 'development');
 console.log('======================================');
 
@@ -60,7 +68,7 @@ const routes = {
       body: JSON.stringify({
         message: 'API funcionando corretamente (Netlify Functions)',
         timestamp: new Date().toISOString(),
-        mode: MODO_OFFLINE ? 'offline (sem MongoDB)' : 'online',
+        mode: supabase ? 'Supabase' : (MODO_OFFLINE ? 'offline (sem banco de dados)' : 'error'),
         environment: process.env.NODE_ENV || 'development'
       })
     };
@@ -68,15 +76,27 @@ const routes = {
   
   // Rota de status
   'GET /status': async () => {
+    // Testar conexão com Supabase se estiver ativo
+    let supabaseStatus = 'disabled';
+    if (supabase) {
+      try {
+        const { data, error } = await supabase.from('users').select('count', { count: 'exact', head: true });
+        supabaseStatus = error ? 'error' : 'connected';
+      } catch (err) {
+        supabaseStatus = 'error';
+      }
+    }
+    
     return {
       statusCode: 200,
       body: JSON.stringify({
         status: "operational",
-        mode: MODO_OFFLINE ? "offline" : "online",
+        mode: supabase ? "Supabase" : (MODO_OFFLINE ? "offline" : "error"),
+        supabase: supabaseStatus,
         timestamp: new Date().toISOString(),
-        message: MODO_OFFLINE 
-          ? "Sistema funcionando no modo offline (sem MongoDB)" 
-          : "Sistema funcionando normalmente"
+        message: supabase 
+          ? "Sistema funcionando com Supabase" 
+          : (MODO_OFFLINE ? "Sistema funcionando no modo offline (sem banco de dados)" : "Erro de configuração")
       })
     };
   },
@@ -106,8 +126,75 @@ const routes = {
           body: JSON.stringify({ message: 'Email e senha são obrigatórios' })
         };
       }
+
+      // Tentar login com Supabase
+      if (supabase) {
+        console.log('[Login] Usando Supabase...');
+        try {
+          // Buscar usuário pelo email
+          const { data: users, error } = await supabase
+            .from('users')
+            .select('*')
+            .eq('email', email)
+            .limit(1);
+          
+          if (error) throw error;
+          
+          const user = users && users.length > 0 ? users[0] : null;
+          
+          if (!user) {
+            console.log('[Login] Usuário não encontrado');
+            return {
+              statusCode: 401,
+              body: JSON.stringify({ message: 'Email ou senha inválidos' })
+            };
+          }
+          
+          // Verificar senha
+          const isPasswordValid = await bcrypt.compare(senha, user.senha_hash);
+          
+          if (!isPasswordValid) {
+            console.log('[Login] Senha inválida');
+            return {
+              statusCode: 401,
+              body: JSON.stringify({ message: 'Email ou senha inválidos' })
+            };
+          }
+          
+          // Gerar token JWT
+          const token = jwt.sign(
+            { id: user.id, email: user.email },
+            JWT_SECRET,
+            { expiresIn: '7d' }
+          );
+          
+          console.log('[Login] Login bem-sucedido via Supabase');
+          return {
+            statusCode: 200,
+            body: JSON.stringify({
+              message: 'Login realizado com sucesso',
+              token,
+              user: { id: user.id, nome: user.nome, email: user.email }
+            })
+          };
+        } catch (supabaseError) {
+          console.error('[Login] Erro no Supabase:', supabaseError.message);
+          // Se falhar, tentar modo offline se habilitado
+          if (!MODO_OFFLINE) {
+            return {
+              statusCode: 500,
+              body: JSON.stringify({ 
+                message: 'Erro na autenticação', 
+                error: supabaseError.message 
+              })
+            };
+          }
+          // Prosseguir para modo offline
+          console.log('[Login] Caindo para modo offline devido a erro do Supabase');
+        }
+      }
       
-      // Login em modo offline
+      // Login em modo offline (fallback)
       if (MODO_OFFLINE) {
         console.log('[Login] Usando modo offline...');
         
@@ -124,7 +211,7 @@ const routes = {
           return {
             statusCode: 200,
             body: JSON.stringify({
-              message: 'Login realizado com sucesso',
+              message: 'Login realizado com sucesso (modo offline)',
               token,
               user: { 
                 id: '000000000000000000000001', 
@@ -164,23 +251,21 @@ const routes = {
           { expiresIn: '7d' }
         );
         
-        console.log('[Login] Login bem-sucedido');
+        console.log('[Login] Login bem-sucedido (modo offline)');
         return {
           statusCode: 200,
           body: JSON.stringify({
-            message: 'Login realizado com sucesso',
+            message: 'Login realizado com sucesso (modo offline)',
             token,
             user: { id: user._id, nome: user.nome, email: user.email }
           })
         };
       }
       
-      // Código original para login com MongoDB foi removido para simplificar
-      // Sempre entrará no modo offline pela configuração atual
-      
+      // Se chegou aqui é porque nem Supabase nem modo offline estão configurados
       return {
         statusCode: 500,
-        body: JSON.stringify({ message: 'Erro de configuração - o sistema deveria estar em modo offline' })
+        body: JSON.stringify({ message: 'Erro de configuração - nenhum banco de dados disponível' })
       };
     } catch (error) {
       console.error('[Login] ERRO:', error.message);
@@ -216,8 +301,81 @@ const routes = {
           body: JSON.stringify({ message: 'Nome, email e senha são obrigatórios' })
         };
       }
+
+      // Criptografar senha - usada em ambos os modos
+      const hashedPassword = await bcrypt.hash(senha, 10);
       
-      // Registro em modo offline
+      // Tentar registro com Supabase
+      if (supabase) {
+        console.log('[Register] Usando Supabase...');
+        try {
+          // Verificar se o email já está em uso
+          const { data: existingUsers, error: checkError } = await supabase
+            .from('users')
+            .select('*')
+            .eq('email', email)
+            .limit(1);
+          
+          if (checkError) throw checkError;
+          
+          if (existingUsers && existingUsers.length > 0) {
+            console.log('[Register] Email já em uso');
+            return {
+              statusCode: 400,
+              body: JSON.stringify({ message: 'Este email já está em uso' })
+            };
+          }
+          
+          // Inserir novo usuário
+          const { data: newUser, error: insertError } = await supabase
+            .from('users')
+            .insert([
+              { 
+                nome, 
+                email, 
+                senha_hash: hashedPassword
+              }
+            ])
+            .select();
+          
+          if (insertError) throw insertError;
+          
+          const user = newUser[0];
+          
+          // Gerar token JWT
+          const token = jwt.sign(
+            { id: user.id, email },
+            JWT_SECRET,
+            { expiresIn: '7d' }
+          );
+          
+          console.log('[Register] Registro bem-sucedido via Supabase');
+          return {
+            statusCode: 201,
+            body: JSON.stringify({
+              message: 'Usuário registrado com sucesso',
+              token,
+              user: { id: user.id, nome, email }
+            })
+          };
+        } catch (supabaseError) {
+          console.error('[Register] Erro no Supabase:', supabaseError.message);
+          // Se falhar, tentar modo offline se habilitado
+          if (!MODO_OFFLINE) {
+            return {
+              statusCode: 500,
+              body: JSON.stringify({ 
+                message: 'Erro no registro', 
+                error: supabaseError.message 
+              })
+            };
+          }
+          // Prosseguir para modo offline
+          console.log('[Register] Caindo para modo offline devido a erro do Supabase');
+        }
+      }
+      
+      // Registro em modo offline (fallback)
       if (MODO_OFFLINE) {
         console.log('[Register] Usando modo offline...');
         
@@ -232,10 +390,7 @@ const routes = {
           };
         }
         
-        // Criptografar senha
-        const hashedPassword = await bcrypt.hash(senha, 10);
-        
-        // Criar ID único (simulando MongoDB ObjectId)
+        // Criar ID único (simulando UUID)
         const timestamp = Math.floor(new Date().getTime() / 1000).toString(16).padStart(8, '0');
         const machineId = Math.floor(Math.random() * 16777216).toString(16).padStart(6, '0');
         const pid = Math.floor(Math.random() * 65536).toString(16).padStart(4, '0');
@@ -263,7 +418,7 @@ const routes = {
           { expiresIn: '7d' }
         );
         
-        console.log('[Register] Registro concluído com sucesso');
+        console.log('[Register] Registro concluído com sucesso (modo offline)');
         return {
           statusCode: 201,
           body: JSON.stringify({
@@ -274,12 +429,10 @@ const routes = {
         };
       }
       
-      // Código original para registro com MongoDB foi removido para simplificar
-      // Sempre entrará no modo offline pela configuração atual
-      
+      // Se chegou aqui é porque nem Supabase nem modo offline estão configurados
       return {
         statusCode: 500,
-        body: JSON.stringify({ message: 'Erro de configuração - o sistema deveria estar em modo offline' })
+        body: JSON.stringify({ message: 'Erro de configuração - nenhum banco de dados disponível' })
       };
     } catch (error) {
       console.error('[Register] ERRO:', error.message);
@@ -303,9 +456,52 @@ const routes = {
         };
       }
       
+      const userId = authResult.user.id;
+      
+      // Tentar buscar usuário com Supabase
+      if (supabase) {
+        console.log('[UserMe] Usando Supabase...');
+        try {
+          const { data: user, error } = await supabase
+            .from('users')
+            .select('id, nome, email, created_at')
+            .eq('id', userId)
+            .single();
+          
+          if (error) throw error;
+          
+          if (!user) {
+            return {
+              statusCode: 404,
+              body: JSON.stringify({ message: 'Usuário não encontrado' })
+            };
+          }
+          
+          console.log('[UserMe] Usuário encontrado via Supabase');
+          return {
+            statusCode: 200,
+            body: JSON.stringify({ user })
+          };
+        } catch (supabaseError) {
+          console.error('[UserMe] Erro no Supabase:', supabaseError.message);
+          // Se falhar, tentar modo offline se habilitado
+          if (!MODO_OFFLINE) {
+            return {
+              statusCode: 500,
+              body: JSON.stringify({ 
+                message: 'Erro ao obter perfil', 
+                error: supabaseError.message 
+              })
+            };
+          }
+          // Prosseguir para modo offline
+          console.log('[UserMe] Caindo para modo offline devido a erro do Supabase');
+        }
+      }
+      
+      // Buscar usuário em modo offline (fallback)
       if (MODO_OFFLINE) {
         console.log('[UserMe] Usando modo offline...');
-        const userId = authResult.user.id;
         
         // Buscar usuário no DB local
         const user = dbLocal.users.find(u => u._id === userId);
@@ -320,21 +516,91 @@ const routes = {
         // Retornar dados do usuário sem a senha
         const { senha, ...userWithoutPassword } = user;
         
+        console.log('[UserMe] Usuário encontrado (modo offline)');
         return {
           statusCode: 200,
           body: JSON.stringify({ user: userWithoutPassword })
         };
       }
       
-      // Código original para buscar usuário com MongoDB foi removido para simplificar
-      // Sempre entrará no modo offline pela configuração atual
-      
+      // Se chegou aqui é porque nem Supabase nem modo offline estão configurados
       return {
         statusCode: 500,
-        body: JSON.stringify({ message: 'Erro de configuração - o sistema deveria estar em modo offline' })
+        body: JSON.stringify({ message: 'Erro de configuração - nenhum banco de dados disponível' })
       };
     } catch (error) {
       console.error('[UserMe] ERRO:', error.message);
+      return {
+        statusCode: 500,
+        body: JSON.stringify({ message: 'Erro interno do servidor', error: error.message })
+      };
+    }
+  },
+  
+  // Rota para listar transações (apenas com Supabase)
+  'GET /transactions': async (event) => {
+    try {
+      console.log('[Transactions] Iniciando processamento...');
+      const authResult = await authenticateToken(event.headers.authorization);
+      
+      if (!authResult.authenticated) {
+        return {
+          statusCode: 401,
+          body: JSON.stringify({ message: authResult.error })
+        };
+      }
+      
+      const userId = authResult.user.id;
+      
+      // Tentar buscar transações com Supabase
+      if (supabase) {
+        console.log('[Transactions] Usando Supabase...');
+        try {
+          const { data: transactions, error } = await supabase
+            .from('transacoes')
+            .select('*')
+            .eq('user_id', userId)
+            .order('data', { ascending: false });
+          
+          if (error) throw error;
+          
+          console.log('[Transactions] Transações obtidas via Supabase');
+          return {
+            statusCode: 200,
+            body: JSON.stringify({ transactions: transactions || [] })
+          };
+        } catch (supabaseError) {
+          console.error('[Transactions] Erro no Supabase:', supabaseError.message);
+          return {
+            statusCode: 500,
+            body: JSON.stringify({ 
+              message: 'Erro ao obter transações', 
+              error: supabaseError.message 
+            })
+          };
+        }
+      }
+      
+      // Modo offline para transações (simplificado)
+      if (MODO_OFFLINE) {
+        console.log('[Transactions] Usando modo offline...');
+        const userTransactions = dbLocal.transacoes.filter(t => t.user_id === userId) || [];
+        
+        return {
+          statusCode: 200,
+          body: JSON.stringify({ 
+            transactions: userTransactions,
+            message: 'Transações em modo offline (exemplo)'
+          })
+        };
+      }
+      
+      return {
+        statusCode: 501,
+        body: JSON.stringify({ message: 'Funcionalidade não implementada' })
+      };
+    } catch (error) {
+      console.error('[Transactions] ERRO:', error.message);
       return {
         statusCode: 500,
         body: JSON.stringify({ message: 'Erro interno do servidor', error: error.message })
