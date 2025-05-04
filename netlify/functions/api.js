@@ -606,6 +606,103 @@ const routes = {
         body: JSON.stringify({ message: 'Erro interno do servidor', error: error.message })
       };
     }
+  },
+  
+  // Rota para excluir uma transação
+  'DELETE /transactions/:id': async (event) => {
+    try {
+      console.log('[DeleteTransaction] Iniciando processamento...');
+      const authResult = await authenticateToken(event.headers.authorization);
+      
+      if (!authResult.authenticated) {
+        return {
+          statusCode: 401,
+          body: JSON.stringify({ message: authResult.error })
+        };
+      }
+      
+      const userId = authResult.user.id;
+      const transactionId = event.path.split('/').pop();
+      
+      console.log(`[DeleteTransaction] Tentando excluir transação ${transactionId} para usuário ${userId}`);
+      
+      // Tentar excluir com Supabase
+      if (supabase) {
+        console.log('[DeleteTransaction] Usando Supabase...');
+        try {
+          const { data, error } = await supabase
+            .from('transacoes')
+            .delete()
+            .eq('id', transactionId)
+            .eq('usuario_id', userId);
+          
+          if (error) throw error;
+          
+          console.log('[DeleteTransaction] Transação excluída via Supabase');
+          return {
+            statusCode: 200,
+            body: JSON.stringify({ 
+              message: 'Transação excluída com sucesso',
+              success: true
+            })
+          };
+        } catch (supabaseError) {
+          console.error('[DeleteTransaction] Erro no Supabase:', supabaseError.message);
+          // Se falhar, tentar modo offline se habilitado
+          if (!MODO_OFFLINE) {
+            return {
+              statusCode: 500,
+              body: JSON.stringify({ 
+                message: 'Erro ao excluir transação', 
+                error: supabaseError.message 
+              })
+            };
+          }
+          // Prosseguir para modo offline
+          console.log('[DeleteTransaction] Caindo para modo offline devido a erro do Supabase');
+        }
+      }
+      
+      // Modo offline para exclusão de transações
+      if (MODO_OFFLINE) {
+        console.log('[DeleteTransaction] Usando modo offline...');
+        
+        // Encontrar o índice da transação a ser excluída
+        const index = dbLocal.transacoes.findIndex(t => 
+          t.id === transactionId && t.user_id === userId
+        );
+        
+        if (index === -1) {
+          return {
+            statusCode: 404,
+            body: JSON.stringify({ message: 'Transação não encontrada' })
+          };
+        }
+        
+        // Remover a transação do array
+        dbLocal.transacoes.splice(index, 1);
+        
+        console.log('[DeleteTransaction] Transação excluída (modo offline)');
+        return {
+          statusCode: 200,
+          body: JSON.stringify({ 
+            message: 'Transação excluída com sucesso (modo offline)',
+            success: true
+          })
+        };
+      }
+      
+      return {
+        statusCode: 501,
+        body: JSON.stringify({ message: 'Funcionalidade não implementada' })
+      };
+    } catch (error) {
+      console.error('[DeleteTransaction] ERRO:', error.message);
+      return {
+        statusCode: 500,
+        body: JSON.stringify({ message: 'Erro interno do servidor', error: error.message })
+      };
+    }
   }
 };
 
