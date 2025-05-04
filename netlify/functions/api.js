@@ -8,35 +8,15 @@ const bcrypt = require('bcryptjs');
 const SUPABASE_URL = 'https://tqorakmunmdmfhpupcxa.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRxb3Jha211bm1kbWZocHVwY3hhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MjA0OTYwMTksImV4cCI6MjAzNjA3MjAxOX0.eyJpc3MiOiJzdXBhYmFzZSJ9';
 
-// Opção de modo offline (fallback se Supabase não funcionar)
-const MODO_OFFLINE = true; // Mude para false depois de testar a conexão com Supabase
-
 // Inicializar o cliente Supabase
-const supabase = SUPABASE_URL && SUPABASE_KEY ? 
-  createClient(SUPABASE_URL, SUPABASE_KEY) : null;
-
-// DB Local (Apenas para solução temporária - modo offline)
-const dbLocal = {
-  users: [
-    {
-      _id: "000000000000000000000001",
-      nome: "Usuário Demo",
-      email: "demo@financaspro.com",
-      // Senha: demo123
-      senha: "$2a$10$3WrVE3JRZ1UYJ6GasjNJj.MbR9RjEgvoCGlFsiaBGIEEkCBNEMzRS",
-      createdAt: new Date("2024-05-01T10:00:00.000Z")
-    }
-  ],
-  transacoes: []
-};
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // Configurações
 const JWT_SECRET = 'financaspro-secure-token-2024';
 
 // Log de inicialização
 console.log('====== INICIANDO API FINANCASPRO ======');
-console.log('Modo Supabase:', supabase ? 'ATIVO' : 'INATIVO');
-console.log('Modo offline (fallback):', MODO_OFFLINE ? 'ATIVO' : 'INATIVO');
+console.log('Modo Supabase: ATIVO');
 console.log('Ambiente:', process.env.NODE_ENV || 'development');
 console.log('======================================');
 
@@ -68,7 +48,7 @@ const routes = {
       body: JSON.stringify({
         message: 'API funcionando corretamente (Netlify Functions)',
         timestamp: new Date().toISOString(),
-        mode: supabase ? 'Supabase' : (MODO_OFFLINE ? 'offline (sem banco de dados)' : 'error'),
+        mode: 'Supabase',
         environment: process.env.NODE_ENV || 'development'
       })
     };
@@ -76,29 +56,30 @@ const routes = {
   
   // Rota de status
   'GET /status': async () => {
-    // Testar conexão com Supabase se estiver ativo
-    let supabaseStatus = 'disabled';
-    if (supabase) {
-      try {
-        const { data, error } = await supabase.from('users').select('count', { count: 'exact', head: true });
-        supabaseStatus = error ? 'error' : 'connected';
-      } catch (err) {
-        supabaseStatus = 'error';
-      }
+    try {
+      // Testar conexão com Supabase
+      const { data, error } = await supabase.from('profiles').select('count', { count: 'exact', head: true });
+      const status = error ? 'error' : 'connected';
+      
+      return {
+        statusCode: 200,
+        body: JSON.stringify({
+          status: "operational",
+          supabase: status,
+          timestamp: new Date().toISOString(),
+          message: "Sistema funcionando com Supabase"
+        })
+      };
+    } catch (err) {
+      return {
+        statusCode: 500,
+        body: JSON.stringify({
+          status: "error",
+          message: "Erro ao verificar status do Supabase",
+          error: err.message
+        })
+      };
     }
-    
-    return {
-      statusCode: 200,
-      body: JSON.stringify({
-        status: "operational",
-        mode: supabase ? "Supabase" : (MODO_OFFLINE ? "offline" : "error"),
-        supabase: supabaseStatus,
-        timestamp: new Date().toISOString(),
-        message: supabase 
-          ? "Sistema funcionando com Supabase" 
-          : (MODO_OFFLINE ? "Sistema funcionando no modo offline (sem banco de dados)" : "Erro de configuração")
-      })
-    };
   },
   
   // Rota de login
@@ -127,42 +108,54 @@ const routes = {
         };
       }
 
-      // Tentar login com Supabase
-      if (supabase) {
-        console.log('[Login] Usando Supabase...');
-        try {
-          // Buscar usuário pelo email na tabela profiles
+      // Login usando Supabase Auth API
+      try {
+        // Primeiro, tente fazer login com a autenticação nativa do Supabase
+        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+          email,
+          password: senha
+        });
+        
+        if (authError) {
+          console.log('[Login] Erro no login via Supabase Auth:', authError.message);
+          
+          // Se falhar no login nativo (talvez o usuário foi criado de outra forma),
+          // tentaremos o método alternativo buscando o perfil
           const { data: users, error } = await supabase
             .from('profiles')
             .select('*')
             .eq('email', email)
             .limit(1);
           
-          console.log('[Login] Resultado da consulta:', users);
+          console.log('[Login] Resultado da consulta de perfil:', users);
           
           if (error) {
-            console.error('[Login] Erro ao buscar usuário:', error.message);
             throw error;
           }
           
           const user = users && users.length > 0 ? users[0] : null;
           
           if (!user) {
-            console.log('[Login] Usuário não encontrado');
             return {
               statusCode: 401,
               body: JSON.stringify({ message: 'Email ou senha inválidos' })
             };
           }
           
-          // Verificar senha
-          const senhaCorreta = await bcrypt.compare(senha, user.senha_hash || user.senha);
-          
-          if (!senhaCorreta) {
-            console.log('[Login] Senha inválida');
+          // Verificar senha (caso usando hash personalizado)
+          if (user.senha_hash) {
+            const senhaCorreta = await bcrypt.compare(senha, user.senha_hash);
+            
+            if (!senhaCorreta) {
+              return {
+                statusCode: 401,
+                body: JSON.stringify({ message: 'Email ou senha inválidos' })
+              };
+            }
+          } else {
             return {
               statusCode: 401,
-              body: JSON.stringify({ message: 'Email ou senha inválidos' })
+              body: JSON.stringify({ message: 'Método de autenticação não suportado para este usuário' })
             };
           }
           
@@ -173,7 +166,7 @@ const routes = {
             { expiresIn: '7d' }
           );
           
-          console.log('[Login] Login bem-sucedido via Supabase');
+          console.log('[Login] Login bem-sucedido via perfil personalizado');
           return {
             statusCode: 200,
             body: JSON.stringify({
@@ -182,96 +175,58 @@ const routes = {
               user: { id: user.id, nome: user.nome, email: user.email }
             })
           };
-        } catch (supabaseError) {
-          console.error('[Login] Erro no Supabase:', supabaseError.message);
-          // Se falhar, tentar modo offline se habilitado
-          if (!MODO_OFFLINE) {
-            return {
-              statusCode: 500,
-              body: JSON.stringify({ 
-                message: 'Erro na autenticação', 
-                error: supabaseError.message 
-              })
-            };
-          }
-          // Prosseguir para modo offline
-          console.log('[Login] Caindo para modo offline devido a erro do Supabase');
-        }
-      }
-      
-      // Login em modo offline (fallback)
-      if (MODO_OFFLINE) {
-        console.log('[Login] Usando modo offline...');
-        
-        // Verificar usuário demo
-        if (email === 'demo@financaspro.com' && senha === 'demo123') {
-          console.log('[Login] Login com usuário demo bem-sucedido');
-          
-          const token = jwt.sign(
-            { id: '000000000000000000000001', email: 'demo@financaspro.com' },
-            JWT_SECRET,
-            { expiresIn: '7d' }
-          );
-          
-          return {
-            statusCode: 200,
-            body: JSON.stringify({
-              message: 'Login realizado com sucesso (modo offline)',
-              token,
-              user: { 
-                id: '000000000000000000000001', 
-                nome: 'Usuário Demo', 
-                email: 'demo@financaspro.com' 
-              }
-            })
-          };
         }
         
-        // Buscar usuário pelo email no DB local
-        const user = dbLocal.users.find(u => u.email === email);
+        // Login bem-sucedido via Supabase Auth
+        const user = authData.user;
         
-        if (!user) {
-          console.log('[Login] Usuário não encontrado');
-          return {
-            statusCode: 401,
-            body: JSON.stringify({ message: 'Email ou senha inválidos' })
-          };
-        }
+        // Obter o perfil completo do usuário
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
         
-        // Verificar senha
-        const isPasswordValid = await bcrypt.compare(senha, user.senha);
-        
-        if (!isPasswordValid) {
-          console.log('[Login] Senha inválida');
-          return {
-            statusCode: 401,
-            body: JSON.stringify({ message: 'Email ou senha inválidos' })
-          };
+        if (profileError) {
+          console.warn('[Login] Aviso ao obter perfil completo:', profileError.message);
         }
         
         // Gerar token JWT
         const token = jwt.sign(
-          { id: user._id, email: user.email },
+          { id: user.id, email: user.email },
           JWT_SECRET,
           { expiresIn: '7d' }
         );
         
-        console.log('[Login] Login bem-sucedido (modo offline)');
+        const userProfile = profileData || { 
+          id: user.id, 
+          nome: user.user_metadata?.nome || 'Usuário', 
+          email: user.email 
+        };
+        
+        console.log('[Login] Login bem-sucedido via Supabase Auth');
         return {
           statusCode: 200,
           body: JSON.stringify({
-            message: 'Login realizado com sucesso (modo offline)',
+            message: 'Login realizado com sucesso',
             token,
-            user: { id: user._id, nome: user.nome, email: user.email }
+            user: { 
+              id: userProfile.id, 
+              nome: userProfile.nome, 
+              email: userProfile.email 
+            }
+          })
+        };
+      } catch (supabaseError) {
+        console.error('[Login] Erro no Supabase:', supabaseError.message);
+        return {
+          statusCode: 500,
+          body: JSON.stringify({ 
+            message: 'Erro na autenticação', 
+            error: supabaseError.message 
           })
         };
       }
-      
-      // Se chegou aqui é porque nem Supabase nem modo offline estão configurados
-      return {
-        statusCode: 500,
-        body: JSON.stringify({ message: 'Erro de configuração - nenhum banco de dados disponível' })
-      };
     } catch (error) {
       console.error('[Login] ERRO:', error.message);
       return {
@@ -307,96 +262,20 @@ const routes = {
         };
       }
 
-      // Criptografar senha - usada em ambos os modos
+      // Criptografar senha
       const hashedPassword = await bcrypt.hash(senha, 10);
       
-      // Tentar registro com Supabase
-      if (supabase) {
-        console.log('[Register] Usando Supabase...');
-        try {
-          // Verificar se o email já está em uso na tabela profiles
-          const { data: existingUsers, error: checkError } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('email', email)
-            .limit(1);
-          
-          if (checkError) throw checkError;
-          
-          if (existingUsers && existingUsers.length > 0) {
-            console.log('[Register] Email já em uso');
-            return {
-              statusCode: 400,
-              body: JSON.stringify({ message: 'Este email já está em uso' })
-            };
-          }
-          
-          // Primeiro, criar autenticação com auth/users
-          const { data: authUser, error: authError } = await supabase.auth.signUp({
-            email,
-            password: senha,
-            options: {
-              data: {
-                nome
-              }
-            }
-          });
-          
-          if (authError) throw authError;
-          
-          // O trigger criará automaticamente o perfil na tabela profiles,
-          // mas vamos atualizar com o hash de senha por segurança
-          const { data: profileUpdate, error: updateError } = await supabase
-            .from('profiles')
-            .update({ senha_hash: hashedPassword })
-            .eq('id', authUser.user.id);
-          
-          if (updateError) {
-            console.warn('[Register] Aviso ao atualizar perfil:', updateError.message);
-            // Continuar mesmo se houver erro na atualização
-          }
-          
-          // Gerar token JWT
-          const token = jwt.sign(
-            { id: authUser.user.id, email },
-            JWT_SECRET,
-            { expiresIn: '7d' }
-          );
-          
-          console.log('[Register] Registro bem-sucedido via Supabase');
-          return {
-            statusCode: 201,
-            body: JSON.stringify({
-              message: 'Usuário registrado com sucesso',
-              token,
-              user: { id: authUser.user.id, nome, email }
-            })
-          };
-        } catch (supabaseError) {
-          console.error('[Register] Erro no Supabase:', supabaseError.message);
-          // Se falhar, tentar modo offline se habilitado
-          if (!MODO_OFFLINE) {
-            return {
-              statusCode: 500,
-              body: JSON.stringify({ 
-                message: 'Erro no registro', 
-                error: supabaseError.message 
-              })
-            };
-          }
-          // Prosseguir para modo offline
-          console.log('[Register] Caindo para modo offline devido a erro do Supabase');
-        }
-      }
-      
-      // Registro em modo offline (fallback)
-      if (MODO_OFFLINE) {
-        console.log('[Register] Usando modo offline...');
+      try {
+        // Verificar se o email já está em uso
+        const { data: existingUsers, error: checkError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('email', email)
+          .limit(1);
         
-        // Verificar se o email já está em uso no DB local
-        const existingUser = dbLocal.users.find(u => u.email === email);
+        if (checkError) throw checkError;
         
-        if (existingUser) {
+        if (existingUsers && existingUsers.length > 0) {
           console.log('[Register] Email já em uso');
           return {
             statusCode: 400,
@@ -404,50 +283,57 @@ const routes = {
           };
         }
         
-        // Criar ID único (simulando UUID)
-        const timestamp = Math.floor(new Date().getTime() / 1000).toString(16).padStart(8, '0');
-        const machineId = Math.floor(Math.random() * 16777216).toString(16).padStart(6, '0');
-        const pid = Math.floor(Math.random() * 65536).toString(16).padStart(4, '0');
-        const increment = Math.floor(Math.random() * 16777216).toString(16).padStart(6, '0');
-        const newId = timestamp + machineId + pid + increment;
-        
-        // Criar novo usuário
-        const newUser = {
-          _id: newId,
-          nome,
+        // Criar usuário com autenticação do Supabase
+        const { data: authUser, error: authError } = await supabase.auth.signUp({
           email,
-          senha: hashedPassword,
-          createdAt: new Date()
-        };
+          password: senha,
+          options: {
+            data: {
+              nome
+            }
+          }
+        });
         
-        // Adicionar ao DB local
-        dbLocal.users.push(newUser);
+        if (authError) throw authError;
         
-        console.log('[Register] Usuário registrado com ID:', newId);
+        // Supabase deve ter triggers que criam automaticamente o perfil na tabela "profiles"
+        // mas vamos atualizar com o hash de senha por segurança
+        const { data: profileUpdate, error: updateError } = await supabase
+          .from('profiles')
+          .update({ senha_hash: hashedPassword })
+          .eq('id', authUser.user.id);
+        
+        if (updateError) {
+          console.warn('[Register] Aviso ao atualizar perfil:', updateError.message);
+          // Continuar mesmo se houver erro na atualização
+        }
         
         // Gerar token JWT
         const token = jwt.sign(
-          { id: newId, email },
+          { id: authUser.user.id, email },
           JWT_SECRET,
           { expiresIn: '7d' }
         );
         
-        console.log('[Register] Registro concluído com sucesso (modo offline)');
+        console.log('[Register] Registro bem-sucedido');
         return {
           statusCode: 201,
           body: JSON.stringify({
-            message: 'Usuário registrado com sucesso (modo offline)',
+            message: 'Usuário registrado com sucesso',
             token,
-            user: { id: newId, nome, email }
+            user: { id: authUser.user.id, nome, email }
+          })
+        };
+      } catch (supabaseError) {
+        console.error('[Register] Erro no Supabase:', supabaseError.message);
+        return {
+          statusCode: 500,
+          body: JSON.stringify({ 
+            message: 'Erro no registro', 
+            error: supabaseError.message 
           })
         };
       }
-      
-      // Se chegou aqui é porque nem Supabase nem modo offline estão configurados
-      return {
-        statusCode: 500,
-        body: JSON.stringify({ message: 'Erro de configuração - nenhum banco de dados disponível' })
-      };
     } catch (error) {
       console.error('[Register] ERRO:', error.message);
       return {
@@ -472,53 +358,15 @@ const routes = {
       
       const userId = authResult.user.id;
       
-      // Tentar buscar usuário com Supabase
-      if (supabase) {
-        console.log('[UserMe] Usando Supabase...');
-        try {
-          const { data: user, error } = await supabase
-            .from('users')
-            .select('id, nome, email, created_at')
-            .eq('id', userId)
-            .single();
-          
-          if (error) throw error;
-          
-          if (!user) {
-            return {
-              statusCode: 404,
-              body: JSON.stringify({ message: 'Usuário não encontrado' })
-            };
-          }
-          
-          console.log('[UserMe] Usuário encontrado via Supabase');
-          return {
-            statusCode: 200,
-            body: JSON.stringify({ user })
-          };
-        } catch (supabaseError) {
-          console.error('[UserMe] Erro no Supabase:', supabaseError.message);
-          // Se falhar, tentar modo offline se habilitado
-          if (!MODO_OFFLINE) {
-            return {
-              statusCode: 500,
-              body: JSON.stringify({ 
-                message: 'Erro ao obter perfil', 
-                error: supabaseError.message 
-              })
-            };
-          }
-          // Prosseguir para modo offline
-          console.log('[UserMe] Caindo para modo offline devido a erro do Supabase');
-        }
-      }
-      
-      // Buscar usuário em modo offline (fallback)
-      if (MODO_OFFLINE) {
-        console.log('[UserMe] Usando modo offline...');
+      // Buscar usuário no Supabase
+      try {
+        const { data: user, error } = await supabase
+          .from('profiles')
+          .select('id, nome, email, created_at')
+          .eq('id', userId)
+          .single();
         
-        // Buscar usuário no DB local
-        const user = dbLocal.users.find(u => u._id === userId);
+        if (error) throw error;
         
         if (!user) {
           return {
@@ -527,21 +375,21 @@ const routes = {
           };
         }
         
-        // Retornar dados do usuário sem a senha
-        const { senha, ...userWithoutPassword } = user;
-        
-        console.log('[UserMe] Usuário encontrado (modo offline)');
+        console.log('[UserMe] Usuário encontrado');
         return {
           statusCode: 200,
-          body: JSON.stringify({ user: userWithoutPassword })
+          body: JSON.stringify({ user })
+        };
+      } catch (supabaseError) {
+        console.error('[UserMe] Erro no Supabase:', supabaseError.message);
+        return {
+          statusCode: 500,
+          body: JSON.stringify({ 
+            message: 'Erro ao obter perfil', 
+            error: supabaseError.message 
+          })
         };
       }
-      
-      // Se chegou aqui é porque nem Supabase nem modo offline estão configurados
-      return {
-        statusCode: 500,
-        body: JSON.stringify({ message: 'Erro de configuração - nenhum banco de dados disponível' })
-      };
     } catch (error) {
       console.error('[UserMe] ERRO:', error.message);
       return {
@@ -551,7 +399,7 @@ const routes = {
     }
   },
   
-  // Rota para listar transações (apenas com Supabase)
+  // Rota para listar transações
   'GET /transactions': async (event) => {
     try {
       console.log('[Transactions] Iniciando processamento...');
@@ -566,53 +414,31 @@ const routes = {
       
       const userId = authResult.user.id;
       
-      // Tentar buscar transações com Supabase
-      if (supabase) {
-        console.log('[Transactions] Usando Supabase...');
-        try {
-          const { data: transactions, error } = await supabase
-            .from('transacoes')
-            .select('*')
-            .eq('user_id', userId)
-            .order('data', { ascending: false });
-          
-          if (error) throw error;
-          
-          console.log('[Transactions] Transações obtidas via Supabase');
-          return {
-            statusCode: 200,
-            body: JSON.stringify({ transactions: transactions || [] })
-          };
-        } catch (supabaseError) {
-          console.error('[Transactions] Erro no Supabase:', supabaseError.message);
-          return {
-            statusCode: 500,
-            body: JSON.stringify({ 
-              message: 'Erro ao obter transações', 
-              error: supabaseError.message 
-            })
-          };
-        }
-      }
-      
-      // Modo offline para transações (simplificado)
-      if (MODO_OFFLINE) {
-        console.log('[Transactions] Usando modo offline...');
-        const userTransactions = dbLocal.transacoes.filter(t => t.user_id === userId) || [];
+      try {
+        // Buscar transações no Supabase
+        const { data: transactions, error } = await supabase
+          .from('transacoes')
+          .select('*')
+          .eq('usuario_id', userId)
+          .order('data', { ascending: false });
         
+        if (error) throw error;
+        
+        console.log('[Transactions] Transações obtidas via Supabase');
         return {
           statusCode: 200,
+          body: JSON.stringify({ transactions: transactions || [] })
+        };
+      } catch (supabaseError) {
+        console.error('[Transactions] Erro no Supabase:', supabaseError.message);
+        return {
+          statusCode: 500,
           body: JSON.stringify({ 
-            transactions: userTransactions,
-            message: 'Transações em modo offline (exemplo)'
+            message: 'Erro ao obter transações', 
+            error: supabaseError.message 
           })
         };
       }
-      
-      return {
-        statusCode: 501,
-        body: JSON.stringify({ message: 'Funcionalidade não implementada' })
-      };
     } catch (error) {
       console.error('[Transactions] ERRO:', error.message);
       return {
@@ -640,76 +466,34 @@ const routes = {
       
       console.log(`[DeleteTransaction] Tentando excluir transação ${transactionId} para usuário ${userId}`);
       
-      // Tentar excluir com Supabase
-      if (supabase) {
-        console.log('[DeleteTransaction] Usando Supabase...');
-        try {
-          const { data, error } = await supabase
-            .from('transacoes')
-            .delete()
-            .eq('id', transactionId)
-            .eq('usuario_id', userId);
-          
-          if (error) throw error;
-          
-          console.log('[DeleteTransaction] Transação excluída via Supabase');
-          return {
-            statusCode: 200,
-            body: JSON.stringify({ 
-              message: 'Transação excluída com sucesso',
-              success: true
-            })
-          };
-        } catch (supabaseError) {
-          console.error('[DeleteTransaction] Erro no Supabase:', supabaseError.message);
-          // Se falhar, tentar modo offline se habilitado
-          if (!MODO_OFFLINE) {
-            return {
-              statusCode: 500,
-              body: JSON.stringify({ 
-                message: 'Erro ao excluir transação', 
-                error: supabaseError.message 
-              })
-            };
-          }
-          // Prosseguir para modo offline
-          console.log('[DeleteTransaction] Caindo para modo offline devido a erro do Supabase');
-        }
-      }
-      
-      // Modo offline para exclusão de transações
-      if (MODO_OFFLINE) {
-        console.log('[DeleteTransaction] Usando modo offline...');
+      try {
+        // Excluir no Supabase
+        const { data, error } = await supabase
+          .from('transacoes')
+          .delete()
+          .eq('id', transactionId)
+          .eq('usuario_id', userId);
         
-        // Encontrar o índice da transação a ser excluída
-        const index = dbLocal.transacoes.findIndex(t => 
-          t.id === transactionId && t.user_id === userId
-        );
+        if (error) throw error;
         
-        if (index === -1) {
-          return {
-            statusCode: 404,
-            body: JSON.stringify({ message: 'Transação não encontrada' })
-          };
-        }
-        
-        // Remover a transação do array
-        dbLocal.transacoes.splice(index, 1);
-        
-        console.log('[DeleteTransaction] Transação excluída (modo offline)');
+        console.log('[DeleteTransaction] Transação excluída via Supabase');
         return {
           statusCode: 200,
           body: JSON.stringify({ 
-            message: 'Transação excluída com sucesso (modo offline)',
+            message: 'Transação excluída com sucesso',
             success: true
           })
         };
+      } catch (supabaseError) {
+        console.error('[DeleteTransaction] Erro no Supabase:', supabaseError.message);
+        return {
+          statusCode: 500,
+          body: JSON.stringify({ 
+            message: 'Erro ao excluir transação', 
+            error: supabaseError.message 
+          })
+        };
       }
-      
-      return {
-        statusCode: 501,
-        body: JSON.stringify({ message: 'Funcionalidade não implementada' })
-      };
     } catch (error) {
       console.error('[DeleteTransaction] ERRO:', error.message);
       return {
@@ -756,101 +540,51 @@ const routes = {
         };
       }
       
-      // Tentar salvar no Supabase
-      if (supabase) {
-        console.log('[AddTransaction] Usando Supabase...');
-        try {
-          // Inserir transação
-          const { data, error } = await supabase
-            .from('transacoes')
-            .insert([
-              {
-                user_id: userId,
-                usuario_id: userId, // Usar ambos para compatibilidade
-                title: title,
-                descricao: title,
-                amount: parseFloat(amount),
-                valor: parseFloat(amount),
-                type: type,
-                tipo: type,
-                category: category,
-                categoria: category,
-                date: date,
-                data: date,
-                content: content || ''
-              }
-            ])
-            .select();
-          
-          if (error) {
-            console.error('[AddTransaction] Erro ao salvar no Supabase:', error.message);
-            throw error;
-          }
-          
-          console.log('[AddTransaction] Transação salva no Supabase:', data);
-          return {
-            statusCode: 201,
-            body: JSON.stringify({ 
-              message: 'Transação adicionada com sucesso',
-              transaction: data[0]
-            })
-          };
-        } catch (supabaseError) {
-          console.error('[AddTransaction] Erro no Supabase:', supabaseError.message);
-          // Se falhar, tentar modo offline se habilitado
-          if (!MODO_OFFLINE) {
-            return {
-              statusCode: 500,
-              body: JSON.stringify({ 
-                message: 'Erro ao adicionar transação', 
-                error: supabaseError.message 
-              })
-            };
-          }
-          // Prosseguir para modo offline
-          console.log('[AddTransaction] Caindo para modo offline devido a erro do Supabase');
+      try {
+        // Inserir transação no Supabase
+        const { data, error } = await supabase
+          .from('transacoes')
+          .insert([
+            {
+              usuario_id: userId,
+              title: title,
+              descricao: title,
+              amount: parseFloat(amount),
+              valor: parseFloat(amount),
+              type: type,
+              tipo: type,
+              category: category,
+              categoria: category,
+              date: date,
+              data: date,
+              content: content || ''
+            }
+          ])
+          .select();
+        
+        if (error) {
+          console.error('[AddTransaction] Erro ao salvar no Supabase:', error.message);
+          throw error;
         }
-      }
-      
-      // Modo offline para transações
-      if (MODO_OFFLINE) {
-        console.log('[AddTransaction] Usando modo offline...');
         
-        // Criar ID para transação
-        const timestamp = Math.floor(new Date().getTime() / 1000).toString(16).padStart(8, '0');
-        const random = Math.floor(Math.random() * 16777216).toString(16).padStart(6, '0');
-        const id = `${timestamp}-${random}`;
-        
-        // Criar objeto de transação
-        const transaction = {
-          id,
-          user_id: userId,
-          title,
-          amount: parseFloat(amount),
-          type,
-          category,
-          date,
-          content: content || '',
-          created_at: new Date().toISOString()
-        };
-        
-        // Adicionar ao DB local
-        dbLocal.transacoes.push(transaction);
-        
-        console.log('[AddTransaction] Transação salva localmente');
+        console.log('[AddTransaction] Transação salva no Supabase:', data);
         return {
           statusCode: 201,
           body: JSON.stringify({ 
-            message: 'Transação adicionada com sucesso (modo offline)',
-            transaction
+            message: 'Transação adicionada com sucesso',
+            transaction: data[0]
+          })
+        };
+      } catch (supabaseError) {
+        console.error('[AddTransaction] Erro no Supabase:', supabaseError.message);
+        return {
+          statusCode: 500,
+          body: JSON.stringify({ 
+            message: 'Erro ao adicionar transação', 
+            error: supabaseError.message 
           })
         };
       }
-      
-      return {
-        statusCode: 501,
-        body: JSON.stringify({ message: 'Funcionalidade não implementada' })
-      };
     } catch (error) {
       console.error('[AddTransaction] ERRO:', error.message);
       return {
