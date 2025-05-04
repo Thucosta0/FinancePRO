@@ -10,11 +10,12 @@ const JWT_SECRET = process.env.JWT_SECRET || 'secreto-do-jwt-aqui';
 
 // Log das configurações (sem mostrar senhas completas)
 console.log('Iniciando API FinançasPRO no Netlify');
-console.log('MongoDB URI configurado:', MONGODB_URI ? 'Sim' : 'Não');
+console.log('MongoDB URI configurado:', MONGODB_URI ? 'Sim ('+MONGODB_URI.substring(0, 20)+'...)' : 'Não');
 console.log('JWT Secret configurado:', JWT_SECRET ? 'Sim' : 'Não');
 
 // Cliente MongoDB
 let cachedDb = null;
+let cachedClient = null;
 
 // Função para conectar ao MongoDB
 async function connectToDatabase() {
@@ -22,7 +23,7 @@ async function connectToDatabase() {
   
   if (cachedDb) {
     console.log('Usando conexão MongoDB em cache');
-    return cachedDb;
+    return { client: cachedClient, db: cachedDb };
   }
   
   if (!MONGODB_URI) {
@@ -35,15 +36,16 @@ async function connectToDatabase() {
     const client = new MongoClient(MONGODB_URI, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
-      serverSelectionTimeoutMS: 5000
+      serverSelectionTimeoutMS: 10000
     });
     
     await client.connect();
     console.log('Conexão com MongoDB estabelecida com sucesso');
     
     const db = client.db('financas-pro');
+    cachedClient = client;
     cachedDb = db;
-    return db;
+    return { client, db };
   } catch (error) {
     console.error('Erro ao conectar ao MongoDB:', error);
     throw error;
@@ -86,12 +88,14 @@ const routes = {
   // Rota de healthcheck
   'GET /healthcheck': async () => {
     try {
-      const db = await connectToDatabase();
+      console.log('Executando healthcheck...');
+      const { db } = await connectToDatabase();
       let dbOperational = false;
       
       try {
         await db.command({ ping: 1 });
         dbOperational = true;
+        console.log('Ping do MongoDB bem-sucedido');
       } catch (error) {
         console.error('Erro ao verificar operação do banco:', error);
       }
@@ -109,6 +113,7 @@ const routes = {
         })
       };
     } catch (error) {
+      console.error('Erro no healthcheck:', error);
       return {
         statusCode: 500,
         body: JSON.stringify({
@@ -136,7 +141,7 @@ const routes = {
       }
       
       console.log('Conectando ao banco de dados...');
-      const db = await connectToDatabase();
+      const { db } = await connectToDatabase();
       console.log('Conexão ao banco estabelecida');
       
       // Verificar se o email já está cadastrado
@@ -205,7 +210,7 @@ const routes = {
       }
       
       console.log('Conectando ao banco de dados...');
-      const db = await connectToDatabase();
+      const { db } = await connectToDatabase();
       console.log('Conexão ao banco estabelecida');
       
       // Buscar usuário pelo email
@@ -222,6 +227,7 @@ const routes = {
       // Verificar senha
       const isPasswordValid = await bcrypt.compare(senha, user.senha);
       if (!isPasswordValid) {
+        console.log('Senha inválida');
         return {
           statusCode: 401,
           body: JSON.stringify({ message: 'Email ou senha inválidos' })
@@ -258,21 +264,25 @@ const routes = {
   // Rota para obter usuário atual
   'GET /user/me': async (event) => {
     try {
+      console.log('Iniciando processamento da rota /user/me');
       const authResult = await authenticateToken(event.headers.authorization);
       
       if (!authResult.authenticated) {
+        console.log('Autenticação falhou:', authResult.error);
         return {
           statusCode: 401,
           body: JSON.stringify({ message: authResult.error })
         };
       }
       
-      const db = await connectToDatabase();
+      const { db } = await connectToDatabase();
       const userId = new ObjectId(authResult.user.id);
       
       // Buscar usuário pelo ID
+      console.log('Buscando usuário com ID:', userId);
       const user = await db.collection('users').findOne({ _id: userId });
       if (!user) {
+        console.log('Usuário não encontrado pelo ID');
         return {
           statusCode: 404,
           body: JSON.stringify({ message: 'Usuário não encontrado' })
