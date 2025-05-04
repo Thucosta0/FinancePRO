@@ -5,6 +5,7 @@
   publish = "."
   # Diretório das funções serverless
   functions = "netlify/functions"
+  command = ""
 
 # Configurações específicas para o ambiente de produção
 [context.production]
@@ -12,16 +13,18 @@
 
 # Configurações de redirecionamento
 [[redirects]]
-  # Permitir acesso direto às funções serverless
+  # Acesso direto às funções serverless - regra primária
   from = "/.netlify/functions/*"
   to = "/.netlify/functions/:splat"
   status = 200
+  force = true
 
 [[redirects]]
-  # Para URLs curtos para a API
+  # Acesso simples à API
   from = "/api/*"
   to = "/.netlify/functions/api/:splat"
   status = 200
+  force = true
 
 [[redirects]]
   # Redirecionar tudo para o index.html para SPA
@@ -34,4 +37,5 @@
   for = "/*"
     [headers.values]
     Access-Control-Allow-Origin = "*"
-    Content-Security-Policy = "default-src 'self'; connect-src 'self' https://*.mongodb.net https://api.netlify.com https://*.netlify.app; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; img-src 'self' data:;" 
+    Access-Control-Allow-Methods = "GET, POST, PUT, DELETE, OPTIONS"
+    Access-Control-Allow-Headers = "Authorization, Content-Type" 
