@@ -29,6 +29,7 @@
   from = "/*"
   to = "/index.html"
   status = 200
+  conditions = {Role = ["anonymous"]}
 
 # Configurações de cabeçalhos
 [[headers]]
@@ -38,4 +39,5 @@
     X-Frame-Options = "DENY"
     X-XSS-Protection = "1; mode=block"
     X-Content-Type-Options = "nosniff"
-    Content-Security-Policy = "default-src 'self'; connect-src 'self' https://*.mongodb.net; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" 
+    Content-Security-Policy = "default-src 'self'; connect-src 'self' https://*.mongodb.net https://api.netlify.com https://*.netlify.app; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; img-src 'self' data:;"
+    Access-Control-Allow-Origin = "*" 
