@@ -2,9 +2,9 @@
 
 [build]
   # Diretório que contém os arquivos estáticos (HTML, CSS, JS)
-  publish = "public"
-  # Comando para construir o site estático
-  command = "npm run build"
+  publish = "."
+  # Comando para construir o site estático (não necessário neste caso)
+  command = "echo 'No build command needed'"
   # Diretório onde as funções serverless estão localizadas
   functions = "netlify/functions"
 
@@ -25,13 +25,6 @@
   force = true
 
 [[redirects]]
-  # Redirecionar chamadas de integração com Uber para função específica
-  from = "/api/integrations/uber/*"
-  to = "/.netlify/functions/uber-integration/:splat"
-  status = 200
-  force = true
-
-[[redirects]]
   # Redirecionar chamadas sem rota para o index.html (SPA)
   from = "/*"
   to = "/index.html"
@@ -39,10 +32,10 @@
 
 # Configurações de cabeçalhos
 [[headers]]
-  # Configurar cabeçalhos para todos os arquivos no diretório /public
+  # Configurar cabeçalhos para todos os arquivos
   for = "/*"
     [headers.values]
     X-Frame-Options = "DENY"
     X-XSS-Protection = "1; mode=block"
     X-Content-Type-Options = "nosniff"
-    Content-Security-Policy = "default-src 'self'; connect-src 'self' https://*.mongodb.net https://api.uber.com; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" 
+    Content-Security-Policy = "default-src 'self'; connect-src 'self' https://*.mongodb.net; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" 
