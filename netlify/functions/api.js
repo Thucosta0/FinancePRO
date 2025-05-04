@@ -257,10 +257,89 @@ const routes = {
         };
       }
 
+      // ------------------- MÉTODO SIMPLIFICADO DE REGISTRO -------------------
+      // Primeiro verificar se o email já existe em profiles (independente do Auth)
+      console.log('[Register] Verificando se o email já está em uso...');
+      const { data: existingProfiles, error: checkError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('email', email)
+        .limit(1);
+      
+      if (checkError) {
+        console.error('[Register] Erro ao verificar email existente:', checkError.message);
+        return {
+          statusCode: 500,
+          body: JSON.stringify({ 
+            message: 'Erro ao verificar disponibilidade do email', 
+            error: checkError.message 
+          })
+        };
+      }
+      
+      if (existingProfiles && existingProfiles.length > 0) {
+        console.log('[Register] Email já em uso:', email);
+        return {
+          statusCode: 400,
+          body: JSON.stringify({ message: 'Este email já está em uso' })
+        };
+      }
+      
+      console.log('[Register] Email disponível, prosseguindo com o registro...');
+      
+      // Criptografar senha
+      const hashedPassword = await bcrypt.hash(senha, 10);
+      
+      // Gerar ID único para o usuário
+      const userId = crypto.randomUUID();
+      console.log(`[Register] ID gerado para o novo usuário: ${userId}`);
+      
+      // Criar objeto do usuário
+      const userData = {
+        id: userId,
+        nome: nome,
+        email: email,
+        senha_hash: hashedPassword,
+        created_at: new Date().toISOString()
+      };
+      
+      // Inserir o usuário na tabela profiles
+      console.log('[Register] Inserindo usuário na tabela profiles...');
+      console.log('[Register] Dados a serem inseridos:', JSON.stringify(userData, null, 2));
+      
+      const { data: insertResult, error: insertError } = await supabase
+        .from('profiles')
+        .insert([userData]);
+      
+      if (insertError) {
+        console.error('[Register] Erro ao inserir usuário:', insertError.message);
+        console.error('[Register] Código do erro:', insertError.code);
+        console.error('[Register] Detalhes do erro:', JSON.stringify(insertError, null, 2));
+        
+        // Verificar se é um erro de violação de restrição única
+        if (insertError.code === '23505') {
+          return {
+            statusCode: 400,
+            body: JSON.stringify({ message: 'Este email já está em uso' })
+          };
+        }
+        
+        return {
+          statusCode: 500,
+          body: JSON.stringify({ 
+            message: 'Erro ao criar usuário no banco de dados', 
+            error: insertError.message 
+          })
+        };
+      }
+      
+      console.log('[Register] Usuário inserido com sucesso!');
+      
+      // Como método de backup, tentar criar também no Auth do Supabase
+      // Isso não bloqueia o registro se falhar, apenas é uma tentativa adicional
       try {
-        // MÉTODO 1: Primeiro criar conta no Supabase Auth
-        console.log('[Register] Tentando criar usuário no Supabase Auth...');
-        const { data: authData, error: authError } = await supabase.auth.signUp({
+        console.log('[Register] Tentando também criar usuário no Supabase Auth...');
+        const { error: authError } = await supabase.auth.signUp({
           email: email,
           password: senha,
           options: {
@@ -271,160 +350,37 @@ const routes = {
         });
         
         if (authError) {
-          console.error('[Register] Erro ao criar usuário no Supabase Auth:', authError.message);
-          
-          // Se o erro for porque o usuário já existe, retornar mensagem específica
-          if (authError.message.includes('already registered')) {
-            return {
-              statusCode: 400,
-              body: JSON.stringify({ message: 'Este email já está em uso' })
-            };
-          }
-          
-          // Continuar com o método alternativo se falhar
-          console.log('[Register] Continuando com método alternativo...');
-        } else if (authData && authData.user) {
-          console.log('[Register] Usuário criado com sucesso no Supabase Auth!');
-          
-          // Verificar se precisamos criar o perfil manualmente
-          const userId = authData.user.id;
-          
-          // Verificar se o perfil já existe
-          console.log('[Register] Verificando se o perfil precisa ser criado...');
-          const { data: existingProfile } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', userId)
-            .single();
-          
-          if (!existingProfile) {
-            console.log('[Register] Criando perfil na tabela profiles...');
-            
-            // Inserir usuário em profiles (pode ser que o trigger não funcione)
-            const { error: insertError } = await supabase
-              .from('profiles')
-              .insert([{
-                id: userId,
-                nome: nome,
-                email: email,
-                created_at: new Date().toISOString()
-              }]);
-            
-            if (insertError) {
-              console.error('[Register] Erro ao inserir perfil:', insertError.message);
-              // Não retornar erro, pois o usuário já foi criado no Auth
-            }
-          }
-          
-          // Gerar token JWT
-          const token = jwt.sign(
-            { id: userId, email },
-            JWT_SECRET,
-            { expiresIn: '7d' }
-          );
-          
-          console.log('[Register] Registro finalizado com sucesso para:', email);
-          return {
-            statusCode: 201,
-            body: JSON.stringify({
-              message: 'Usuário registrado com sucesso',
-              token,
-              user: { id: userId, nome, email }
-            })
-          };
+          console.log('[Register] Aviso: Não foi possível criar no Auth, mas o usuário foi registrado na tabela profiles:', authError.message);
+        } else {
+          console.log('[Register] Usuário criado com sucesso também no Auth!');
         }
-        
-        // MÉTODO 2: Se o Supabase Auth falhar, tentamos o método direto para a tabela profiles
-        console.log('[Register] Verificando se o email já está em uso na tabela profiles...');
-        const { data: existingProfiles, error: checkError } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('email', email)
-          .limit(1);
-        
-        if (checkError) {
-          console.error('[Register] Erro ao verificar email existente:', checkError.message);
-          throw new Error(`Erro ao verificar email: ${checkError.message}`);
-        }
-        
-        if (existingProfiles && existingProfiles.length > 0) {
-          console.log('[Register] Email já em uso na tabela profiles:', email);
-          return {
-            statusCode: 400,
-            body: JSON.stringify({ message: 'Este email já está em uso' })
-          };
-        }
-        
-        console.log('[Register] Email disponível, prosseguindo com o registro...');
-        
-        // Criptografar senha
-        const hashedPassword = await bcrypt.hash(senha, 10);
-        
-        // Gerar ID único para o usuário
-        const userId = crypto.randomUUID();
-        console.log(`[Register] ID gerado para o novo usuário: ${userId}`);
-        
-        // Criar objeto do usuário
-        const userData = {
-          id: userId,
-          nome: nome,
-          email: email,
-          senha_hash: hashedPassword,
-          created_at: new Date().toISOString()
-        };
-        
-        // Inserir o usuário na tabela profiles
-        console.log('[Register] Inserindo usuário na tabela profiles...');
-        console.log('[Register] Dados a serem inseridos:', JSON.stringify(userData, null, 2));
-        
-        const { data: insertResult, error: insertError } = await supabase
-          .from('profiles')
-          .insert([userData])
-          .select();
-        
-        if (insertError) {
-          console.error('[Register] Erro ao inserir usuário:', insertError.message);
-          console.error('[Register] Detalhes do erro:', JSON.stringify(insertError, null, 2));
-          throw new Error(`Erro ao criar usuário: ${insertError.message}`);
-        }
-        
-        console.log('[Register] Usuário inserido com sucesso!');
-        console.log('[Register] Resultado da inserção:', insertResult);
-        
-        // Gerar token JWT
-        const token = jwt.sign(
-          { id: userId, email },
-          JWT_SECRET,
-          { expiresIn: '7d' }
-        );
-        
-        console.log('[Register] Registro finalizado com sucesso para:', email);
-        return {
-          statusCode: 201,
-          body: JSON.stringify({
-            message: 'Usuário registrado com sucesso',
-            token,
-            user: { id: userId, nome, email }
-          })
-        };
-      } catch (error) {
-        console.error('[Register] Erro ao criar usuário:', error.message);
-        console.error('[Register] Stack trace:', error.stack);
-        return {
-          statusCode: 500,
-          body: JSON.stringify({ 
-            message: 'Erro ao criar usuário', 
-            error: error.message 
-          })
-        };
+      } catch (authErr) {
+        console.log('[Register] Aviso: Erro ao tentar criar no Auth, mas o usuário foi registrado na tabela profiles:', authErr.message);
       }
+      
+      // Gerar token JWT
+      const token = jwt.sign(
+        { id: userId, email },
+        JWT_SECRET,
+        { expiresIn: '7d' }
+      );
+      
+      console.log('[Register] Registro finalizado com sucesso para:', email);
+      return {
+        statusCode: 201,
+        body: JSON.stringify({
+          message: 'Usuário registrado com sucesso',
+          token,
+          user: { id: userId, nome, email }
+        })
+      };
     } catch (error) {
       console.error('[Register] ERRO GERAL:', error.message);
       console.error('[Register] Stack trace completo:', error.stack);
       return {
         statusCode: 500,
         body: JSON.stringify({ 
-          message: 'Erro interno do servidor', 
+          message: 'Erro interno do servidor ao processar o registro', 
           error: error.message 
         })
       };
