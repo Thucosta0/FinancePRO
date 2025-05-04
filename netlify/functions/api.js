@@ -14,12 +14,6 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 // Configurações
 const JWT_SECRET = 'financaspro-secure-token-2024';
 
-// Log de inicialização
-console.log('====== INICIANDO API FINANCASPRO ======');
-console.log('Modo Supabase: ATIVO');
-console.log('Ambiente:', process.env.NODE_ENV || 'development');
-console.log('======================================');
-
 // Middleware para autenticação
 const authenticateToken = async (authHeader) => {
   if (!authHeader) {
