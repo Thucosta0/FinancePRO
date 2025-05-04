@@ -69,6 +69,7 @@
         <div>
             <button id="testHelloWorld">Testar hello-world.js</button>
             <button id="testHello">Testar hello.js</button>
+            <button id="testNewTest">Testar test.js</button>
             <button id="testApi">Testar api.js (/test)</button>
         </div>
         
@@ -76,6 +77,7 @@
         <ul>
             <li><a href="/.netlify/functions/hello-world" target="_blank" class="url">/.netlify/functions/hello-world</a></li>
             <li><a href="/.netlify/functions/hello" target="_blank" class="url">/.netlify/functions/hello</a></li>
+            <li><a href="/.netlify/functions/test" target="_blank" class="url">/.netlify/functions/test</a></li>
             <li><a href="/.netlify/functions/api/test" target="_blank" class="url">/.netlify/functions/api/test</a></li>
         </ul>
         
@@ -112,6 +114,27 @@
                 result.className = '';
                 
                 const response = await fetch('/.netlify/functions/hello');
+                if (!response.ok) {
+                    throw new Error(`Status: ${response.status} ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                result.textContent = JSON.stringify(data, null, 2);
+                result.className = 'success';
+            } catch (error) {
+                const result = document.getElementById('result');
+                result.textContent = `Erro: ${error.message}`;
+                result.className = 'error';
+            }
+        });
+
+        document.getElementById('testNewTest').addEventListener('click', async () => {
+            try {
+                const result = document.getElementById('result');
+                result.textContent = 'Carregando...';
+                result.className = '';
+                
+                const response = await fetch('/.netlify/functions/test');
                 if (!response.ok) {
                     throw new Error(`Status: ${response.status} ${response.statusText}`);
                 }

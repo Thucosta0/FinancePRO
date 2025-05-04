@@ -4,14 +4,14 @@
   "description": "Aplicativo de registros pessoais",
   "main": "server.js",
   "scripts": {
-    "start": "node -r dotenv/config server.js",
-    "dev": "nodemon -r dotenv/config server.js",
+    "dev": "netlify dev",
+    "build": "echo 'Build não necessário para este projeto'",
+    "start": "netlify dev",
     "start:prod": "NODE_ENV=production node -r dotenv/config server.js",
     "start:prod:win": "set NODE_ENV=production&& node -r dotenv/config server.js",
     "test": "jest",
     "lint": "eslint .",
-    "backup": "node -r dotenv/config scripts/backup.js",
-    "build": "echo 'Build completed'"
+    "backup": "node -r dotenv/config scripts/backup.js"
   },
   "dependencies": {
     "axios": "^1.9.0",
