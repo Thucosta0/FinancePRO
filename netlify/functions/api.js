@@ -5,13 +5,13 @@ const bcrypt = require('bcryptjs');
 const fetch = require('node-fetch');
 
 // Configurações
-const MONGODB_URI = process.env.MONGODB_URI;
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://thucosta:Thu3048%23@to-my-life.vnkwkct.mongodb.net/?retryWrites=true&w=majority&appName=To-my-life';
 const JWT_SECRET = process.env.JWT_SECRET || 'financaspro-secure-token-2024';
 
 // Log detalhado das configurações (sem mostrar senhas completas)
 console.log('====== INICIANDO API FINANCASPRO ======');
 console.log('Versão Node:', process.version);
-console.log('MongoDB URI configurado:', MONGODB_URI ? `Sim (${MONGODB_URI.substring(0, 15)}...)` : 'NÃO CONFIGURADO - ERRO');
+console.log('MongoDB URI configurado:', MONGODB_URI ? `Sim (${MONGODB_URI.substring(0, 20)}...)` : 'NÃO CONFIGURADO - ERRO');
 console.log('JWT Secret configurado:', JWT_SECRET ? 'Sim' : 'NÃO CONFIGURADO - ERRO');
 console.log('Ambiente:', process.env.NODE_ENV || 'development');
 console.log('======================================');
@@ -36,18 +36,29 @@ async function connectToDatabase() {
   
   try {
     console.log('[MongoDB] Criando nova conexão...');
-    const client = new MongoClient(MONGODB_URI, {
+    console.log('[MongoDB] URI:', MONGODB_URI.substring(0, 30) + '...');
+    
+    // Opções otimizadas para Netlify Functions
+    const options = {
       useNewUrlParser: true,
       useUnifiedTopology: true,
-      serverSelectionTimeoutMS: 15000,
-      connectTimeoutMS: 15000
-    });
+      serverSelectionTimeoutMS: 20000,
+      connectTimeoutMS: 20000,
+      socketTimeoutMS: 30000,
+      maxIdleTimeMS: 45000,
+      wtimeoutMS: 2500
+    };
     
     console.log('[MongoDB] Tentando conectar...');
+    const client = new MongoClient(MONGODB_URI, options);
     await client.connect();
     console.log('[MongoDB] Conexão estabelecida com sucesso!');
     
-    const db = client.db('financas-pro');
+    // Usar o mesmo nome do banco de dados configurado na URI
+    const dbName = 'financas-pro';
+    console.log(`[MongoDB] Usando banco de dados: ${dbName}`);
+    const db = client.db(dbName);
+    
     cachedClient = client;
     cachedDb = db;
     
@@ -59,6 +70,9 @@ async function connectToDatabase() {
   } catch (error) {
     console.error('[MongoDB] ERRO AO CONECTAR:', error.message);
     console.error('[MongoDB] Stack trace:', error.stack);
+    if (error.message.includes('ENOTFOUND') || error.message.includes('connection timed out')) {
+      console.error('[MongoDB] ERRO DE CONECTIVIDADE: Verifique IP whitelist no MongoDB Atlas');
+    }
     throw new Error(`Falha na conexão com MongoDB: ${error.message}`);
   }
 }
