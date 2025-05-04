@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Teste de Função Netlify</title>
+    <title>Teste de Funções Netlify</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -48,26 +48,63 @@
             color: red;
             font-weight: bold;
         }
+        .success {
+            color: green;
+        }
+        .url {
+            font-family: monospace;
+            background-color: #eee;
+            padding: 2px 4px;
+            border-radius: 3px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>FinançasPRO - Teste de Funções Netlify</h1>
-        <p>Esta página é para testar as funções serverless do Netlify.</p>
+        <p>Esta página testa as funções serverless do Netlify para diagnosticar problemas de implantação.</p>
         
-        <h2>Testes Disponíveis</h2>
+        <h2>Funções de Teste</h2>
         
         <div>
-            <button id="testHello">Testar função Hello</button>
-            <button id="testApi">Testar função API Test</button>
-            <button id="testApiHealthcheck">Testar API Healthcheck</button>
+            <button id="testHelloWorld">Testar hello-world.js</button>
+            <button id="testHello">Testar hello.js</button>
+            <button id="testApi">Testar api.js (/test)</button>
         </div>
+        
+        <h3>Acesso Direto às Funções:</h3>
+        <ul>
+            <li><a href="/.netlify/functions/hello-world" target="_blank" class="url">/.netlify/functions/hello-world</a></li>
+            <li><a href="/.netlify/functions/hello" target="_blank" class="url">/.netlify/functions/hello</a></li>
+            <li><a href="/.netlify/functions/api/test" target="_blank" class="url">/.netlify/functions/api/test</a></li>
+        </ul>
         
         <h3>Resultado:</h3>
         <pre id="result">Clique em um dos botões acima para testar...</pre>
     </div>
 
     <script>
+        document.getElementById('testHelloWorld').addEventListener('click', async () => {
+            try {
+                const result = document.getElementById('result');
+                result.textContent = 'Carregando...';
+                result.className = '';
+                
+                const response = await fetch('/.netlify/functions/hello-world');
+                if (!response.ok) {
+                    throw new Error(`Status: ${response.status} ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                result.textContent = JSON.stringify(data, null, 2);
+                result.className = 'success';
+            } catch (error) {
+                const result = document.getElementById('result');
+                result.textContent = `Erro: ${error.message}`;
+                result.className = 'error';
+            }
+        });
+
         document.getElementById('testHello').addEventListener('click', async () => {
             try {
                 const result = document.getElementById('result');
@@ -81,6 +118,7 @@
                 
                 const data = await response.json();
                 result.textContent = JSON.stringify(data, null, 2);
+                result.className = 'success';
             } catch (error) {
                 const result = document.getElementById('result');
                 result.textContent = `Erro: ${error.message}`;
@@ -101,26 +139,7 @@
                 
                 const data = await response.json();
                 result.textContent = JSON.stringify(data, null, 2);
-            } catch (error) {
-                const result = document.getElementById('result');
-                result.textContent = `Erro: ${error.message}`;
-                result.className = 'error';
-            }
-        });
-
-        document.getElementById('testApiHealthcheck').addEventListener('click', async () => {
-            try {
-                const result = document.getElementById('result');
-                result.textContent = 'Carregando...';
-                result.className = '';
-                
-                const response = await fetch('/.netlify/functions/api/healthcheck');
-                if (!response.ok) {
-                    throw new Error(`Status: ${response.status} ${response.statusText}`);
-                }
-                
-                const data = await response.json();
-                result.textContent = JSON.stringify(data, null, 2);
+                result.className = 'success';
             } catch (error) {
                 const result = document.getElementById('result');
                 result.textContent = `Erro: ${error.message}`;
