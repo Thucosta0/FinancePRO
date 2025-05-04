@@ -6,12 +6,15 @@ const fetch = require('node-fetch');
 
 // Configurações
 const MONGODB_URI = process.env.MONGODB_URI;
-const JWT_SECRET = process.env.JWT_SECRET || 'secreto-do-jwt-aqui';
+const JWT_SECRET = process.env.JWT_SECRET || 'financaspro-secure-token-2024';
 
-// Log das configurações (sem mostrar senhas completas)
-console.log('Iniciando API FinançasPRO no Netlify');
-console.log('MongoDB URI configurado:', MONGODB_URI ? 'Sim ('+MONGODB_URI.substring(0, 20)+'...)' : 'Não');
-console.log('JWT Secret configurado:', JWT_SECRET ? 'Sim' : 'Não');
+// Log detalhado das configurações (sem mostrar senhas completas)
+console.log('====== INICIANDO API FINANCASPRO ======');
+console.log('Versão Node:', process.version);
+console.log('MongoDB URI configurado:', MONGODB_URI ? `Sim (${MONGODB_URI.substring(0, 15)}...)` : 'NÃO CONFIGURADO - ERRO');
+console.log('JWT Secret configurado:', JWT_SECRET ? 'Sim' : 'NÃO CONFIGURADO - ERRO');
+console.log('Ambiente:', process.env.NODE_ENV || 'development');
+console.log('======================================');
 
 // Cliente MongoDB
 let cachedDb = null;
@@ -19,36 +22,44 @@ let cachedClient = null;
 
 // Função para conectar ao MongoDB
 async function connectToDatabase() {
-  console.log('Tentando conectar ao MongoDB...');
+  console.log('[MongoDB] Tentando conectar ao MongoDB...');
   
   if (cachedDb) {
-    console.log('Usando conexão MongoDB em cache');
+    console.log('[MongoDB] Usando conexão MongoDB em cache');
     return { client: cachedClient, db: cachedDb };
   }
   
   if (!MONGODB_URI) {
-    console.error('URL de conexão MongoDB não definida!');
-    throw new Error('MONGODB_URI não configurado nas variáveis de ambiente');
+    console.error('[MongoDB] ERRO CRÍTICO: URL de conexão MongoDB não definida!');
+    throw new Error('MONGODB_URI não configurado nas variáveis de ambiente. Configure no painel do Netlify.');
   }
   
   try {
-    console.log('Criando nova conexão com MongoDB');
+    console.log('[MongoDB] Criando nova conexão...');
     const client = new MongoClient(MONGODB_URI, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
-      serverSelectionTimeoutMS: 10000
+      serverSelectionTimeoutMS: 15000,
+      connectTimeoutMS: 15000
     });
     
+    console.log('[MongoDB] Tentando conectar...');
     await client.connect();
-    console.log('Conexão com MongoDB estabelecida com sucesso');
+    console.log('[MongoDB] Conexão estabelecida com sucesso!');
     
     const db = client.db('financas-pro');
     cachedClient = client;
     cachedDb = db;
+    
+    console.log('[MongoDB] Verificando conexão com ping...');
+    await db.command({ ping: 1 });
+    console.log('[MongoDB] Ping bem-sucedido! Banco de dados operacional.');
+    
     return { client, db };
   } catch (error) {
-    console.error('Erro ao conectar ao MongoDB:', error);
-    throw error;
+    console.error('[MongoDB] ERRO AO CONECTAR:', error.message);
+    console.error('[MongoDB] Stack trace:', error.stack);
+    throw new Error(`Falha na conexão com MongoDB: ${error.message}`);
   }
 }
 
@@ -88,37 +99,44 @@ const routes = {
   // Rota de healthcheck
   'GET /healthcheck': async () => {
     try {
-      console.log('Executando healthcheck...');
-      const { db } = await connectToDatabase();
+      console.log('[Healthcheck] Executando verificação...');
       let dbOperational = false;
+      let dbConnected = false;
+      let error = null;
       
       try {
+        const { db } = await connectToDatabase();
+        dbConnected = true;
         await db.command({ ping: 1 });
         dbOperational = true;
-        console.log('Ping do MongoDB bem-sucedido');
-      } catch (error) {
-        console.error('Erro ao verificar operação do banco:', error);
+        console.log('[Healthcheck] Ping do MongoDB bem-sucedido');
+      } catch (err) {
+        error = err.message;
+        console.error('[Healthcheck] Erro ao verificar banco:', err.message);
       }
       
       return {
-        statusCode: 200,
+        statusCode: dbOperational ? 200 : 500,
         body: JSON.stringify({
-          status: dbOperational ? 'healthy' : 'degraded',
+          status: dbOperational ? 'healthy' : 'unhealthy',
           timestamp: new Date().toISOString(),
           mongoStatus: {
-            connected: !!db,
-            operational: dbOperational
+            connected: dbConnected,
+            operational: dbOperational,
+            error: error
           },
+          mongoUri: MONGODB_URI ? `${MONGODB_URI.substring(0, 15)}...` : 'não configurado',
           environment: process.env.NODE_ENV || 'development'
         })
       };
     } catch (error) {
-      console.error('Erro no healthcheck:', error);
+      console.error('[Healthcheck] Erro crítico:', error.message);
       return {
         statusCode: 500,
         body: JSON.stringify({
           status: 'unhealthy',
-          error: error.message
+          error: error.message,
+          timestamp: new Date().toISOString()
         })
       };
     }
@@ -127,28 +145,40 @@ const routes = {
   // Rota de registro
   'POST /register': async (event) => {
     try {
-      console.log('Iniciando processamento da rota /register');
+      console.log('[Register] Iniciando processamento...');
       
-      const { nome, email, senha } = JSON.parse(event.body);
-      console.log(`Tentativa de registro para o email: ${email}`);
-      
-      if (!nome || !email || !senha) {
-        console.log('Dados incompletos no registro');
+      let requestBody;
+      try {
+        requestBody = JSON.parse(event.body);
+        console.log('[Register] Corpo da requisição parseado com sucesso');
+      } catch (err) {
+        console.error('[Register] Erro ao processar JSON do corpo:', err.message);
         return {
           statusCode: 400,
-          body: JSON.stringify({ message: 'Dados incompletos' })
+          body: JSON.stringify({ message: 'Formato JSON inválido' })
         };
       }
       
-      console.log('Conectando ao banco de dados...');
+      const { nome, email, senha } = requestBody;
+      console.log(`[Register] Tentativa para email: ${email}`);
+      
+      if (!nome || !email || !senha) {
+        console.log('[Register] Dados incompletos');
+        return {
+          statusCode: 400,
+          body: JSON.stringify({ message: 'Nome, email e senha são obrigatórios' })
+        };
+      }
+      
+      console.log('[Register] Conectando ao banco de dados...');
       const { db } = await connectToDatabase();
-      console.log('Conexão ao banco estabelecida');
+      console.log('[Register] Conexão estabelecida');
       
       // Verificar se o email já está cadastrado
-      console.log('Verificando se o email já existe...');
+      console.log('[Register] Verificando duplicidade de email...');
       const existingUser = await db.collection('users').findOne({ email });
       if (existingUser) {
-        console.log('Email já está em uso');
+        console.log('[Register] Email já em uso');
         return {
           statusCode: 400,
           body: JSON.stringify({ message: 'Este email já está em uso.' })
@@ -156,9 +186,11 @@ const routes = {
       }
       
       // Criptografar a senha
+      console.log('[Register] Criptografando senha...');
       const hashedPassword = await bcrypt.hash(senha, 10);
       
       // Criar novo usuário
+      console.log('[Register] Inserindo novo usuário no banco...');
       const result = await db.collection('users').insertOne({
         nome,
         email,
@@ -167,12 +199,14 @@ const routes = {
       });
       
       // Gerar token JWT
+      console.log('[Register] Gerando token JWT...');
       const token = jwt.sign(
         { id: result.insertedId, email },
         JWT_SECRET,
         { expiresIn: '7d' }
       );
       
+      console.log('[Register] Usuário registrado com sucesso!');
       return {
         statusCode: 201,
         body: JSON.stringify({
@@ -182,12 +216,13 @@ const routes = {
         })
       };
     } catch (error) {
-      console.error("Erro ao registrar usuário:", error);
+      console.error("[Register] ERRO:", error.message);
+      console.error("[Register] Stack trace:", error.stack);
       return {
         statusCode: 500,
         body: JSON.stringify({ 
           message: 'Erro interno do servidor',
-          error: process.env.NODE_ENV === 'development' ? error.message : 'Erro interno'
+          details: error.message
         })
       };
     }
@@ -196,28 +231,40 @@ const routes = {
   // Rota de login
   'POST /login': async (event) => {
     try {
-      console.log('Iniciando processamento da rota /login');
+      console.log('[Login] Iniciando processamento...');
       
-      const { email, senha } = JSON.parse(event.body);
-      console.log(`Tentativa de login para o email: ${email}`);
+      let requestBody;
+      try {
+        requestBody = JSON.parse(event.body);
+        console.log('[Login] Corpo da requisição parseado com sucesso');
+      } catch (err) {
+        console.error('[Login] Erro ao processar JSON do corpo:', err.message);
+        return {
+          statusCode: 400,
+          body: JSON.stringify({ message: 'Formato JSON inválido' })
+        };
+      }
+      
+      const { email, senha } = requestBody;
+      console.log(`[Login] Tentativa para email: ${email}`);
       
       if (!email || !senha) {
-        console.log('Email ou senha não fornecidos');
+        console.log('[Login] Email ou senha não fornecidos');
         return {
           statusCode: 400,
           body: JSON.stringify({ message: 'Email e senha são obrigatórios' })
         };
       }
       
-      console.log('Conectando ao banco de dados...');
+      console.log('[Login] Conectando ao banco de dados...');
       const { db } = await connectToDatabase();
-      console.log('Conexão ao banco estabelecida');
+      console.log('[Login] Conexão estabelecida');
       
       // Buscar usuário pelo email
-      console.log('Buscando usuário no banco de dados...');
+      console.log('[Login] Buscando usuário no banco...');
       const user = await db.collection('users').findOne({ email });
       if (!user) {
-        console.log('Usuário não encontrado');
+        console.log('[Login] Usuário não encontrado');
         return {
           statusCode: 401,
           body: JSON.stringify({ message: 'Email ou senha inválidos' })
@@ -225,9 +272,10 @@ const routes = {
       }
       
       // Verificar senha
+      console.log('[Login] Verificando senha...');
       const isPasswordValid = await bcrypt.compare(senha, user.senha);
       if (!isPasswordValid) {
-        console.log('Senha inválida');
+        console.log('[Login] Senha inválida');
         return {
           statusCode: 401,
           body: JSON.stringify({ message: 'Email ou senha inválidos' })
@@ -235,12 +283,14 @@ const routes = {
       }
       
       // Gerar token JWT
+      console.log('[Login] Gerando token JWT...');
       const token = jwt.sign(
         { id: user._id, email: user.email },
         JWT_SECRET,
         { expiresIn: '7d' }
       );
       
+      console.log('[Login] Login realizado com sucesso!');
       return {
         statusCode: 200,
         body: JSON.stringify({
@@ -250,12 +300,13 @@ const routes = {
         })
       };
     } catch (error) {
-      console.error("Erro ao fazer login:", error);
+      console.error("[Login] ERRO:", error.message);
+      console.error("[Login] Stack trace:", error.stack);
       return {
         statusCode: 500,
         body: JSON.stringify({ 
           message: 'Erro interno do servidor',
-          error: process.env.NODE_ENV === 'development' ? error.message : 'Erro interno'
+          details: error.message
         })
       };
     }
@@ -264,11 +315,11 @@ const routes = {
   // Rota para obter usuário atual
   'GET /user/me': async (event) => {
     try {
-      console.log('Iniciando processamento da rota /user/me');
+      console.log('[UserMe] Iniciando processamento...');
       const authResult = await authenticateToken(event.headers.authorization);
       
       if (!authResult.authenticated) {
-        console.log('Autenticação falhou:', authResult.error);
+        console.log('[UserMe] Autenticação falhou:', authResult.error);
         return {
           statusCode: 401,
           body: JSON.stringify({ message: authResult.error })
@@ -279,10 +330,10 @@ const routes = {
       const userId = new ObjectId(authResult.user.id);
       
       // Buscar usuário pelo ID
-      console.log('Buscando usuário com ID:', userId);
+      console.log('[UserMe] Buscando usuário com ID:', userId);
       const user = await db.collection('users').findOne({ _id: userId });
       if (!user) {
-        console.log('Usuário não encontrado pelo ID');
+        console.log('[UserMe] Usuário não encontrado pelo ID');
         return {
           statusCode: 404,
           body: JSON.stringify({ message: 'Usuário não encontrado' })
@@ -299,10 +350,14 @@ const routes = {
         })
       };
     } catch (error) {
-      console.error("Erro ao buscar dados do usuário:", error);
+      console.error("[UserMe] ERRO:", error.message);
+      console.error("[UserMe] Stack trace:", error.stack);
       return {
         statusCode: 500,
-        body: JSON.stringify({ message: 'Erro interno do servidor' })
+        body: JSON.stringify({ 
+          message: 'Erro interno do servidor',
+          details: error.message
+        })
       };
     }
   }
@@ -313,23 +368,24 @@ exports.handler = async (event, context) => {
   // Configurar para reutilizar conexão com MongoDB entre invocações
   context.callbackWaitsForEmptyEventLoop = false;
   
-  console.log(`Recebida requisição: ${event.httpMethod} ${event.path}`);
+  console.log(`[API] Requisição: ${event.httpMethod} ${event.path}`);
   
   // Construir identificador de rota
   const path = event.path.replace('/.netlify/functions/api', '');
   const routeKey = `${event.httpMethod} ${path}`;
-  console.log(`Rota identificada: ${routeKey}`);
+  console.log(`[API] Rota identificada: ${routeKey}`);
   
   // Adicionar cabeçalhos CORS
   const headers = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type,Authorization',
-    'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS'
+    'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
+    'Content-Type': 'application/json'
   };
   
   // Responder a solicitações OPTIONS (CORS preflight)
   if (event.httpMethod === 'OPTIONS') {
-    console.log('Requisição CORS preflight detectada, retornando 204');
+    console.log('[API] Requisição CORS preflight detectada, retornando 204');
     return {
       statusCode: 204,
       headers
@@ -339,39 +395,42 @@ exports.handler = async (event, context) => {
   // Verificar se a rota existe
   const route = routes[routeKey];
   if (route) {
-    console.log(`Rota encontrada: ${routeKey}`);
+    console.log(`[API] Rota encontrada: ${routeKey}, executando...`);
     try {
       // Executar função da rota
       const response = await route(event);
       // Adicionar cabeçalhos CORS à resposta
-      console.log(`Resposta para ${routeKey}: Status ${response.statusCode}`);
+      console.log(`[API] Resposta para ${routeKey}: Status ${response.statusCode}`);
       return {
         ...response,
         headers: { ...headers, ...response.headers }
       };
     } catch (error) {
-      console.error(`Erro ao processar rota ${routeKey}:`, error);
-      console.error('Stack trace:', error.stack);
+      console.error(`[API] ERRO AO PROCESSAR ROTA ${routeKey}:`, error.message);
+      console.error('[API] Stack trace:', error.stack);
       return {
         statusCode: 500,
         headers,
         body: JSON.stringify({
           message: 'Erro interno do servidor',
           error: error.message,
-          stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+          routeKey,
+          path
         })
       };
     }
   }
   
   // Rota não encontrada
-  console.log(`Rota não encontrada: ${routeKey}`);
+  console.log(`[API] Rota não encontrada: ${routeKey}`);
   return {
     statusCode: 404,
     headers,
     body: JSON.stringify({ 
       message: 'Rota não encontrada',
-      requestedPath: path
+      requestedPath: path,
+      requestedRouteKey: routeKey,
+      availableRoutes: Object.keys(routes)
     })
   };
 }; 
