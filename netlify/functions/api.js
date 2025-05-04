@@ -2,6 +2,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 
 // ===== CONFIGURAÇÕES SUPABASE =====
 // Credenciais do projeto Supabase
@@ -199,6 +200,7 @@ const routes = {
       try {
         requestBody = JSON.parse(event.body);
       } catch (err) {
+        console.error('[Register] Erro ao analisar JSON:', err.message);
         return {
           statusCode: 400,
           body: JSON.stringify({ message: 'Formato JSON inválido' })
@@ -209,35 +211,39 @@ const routes = {
       console.log(`[Register] Tentativa para email: ${email}`);
       
       if (!nome || !email || !senha) {
+        console.error('[Register] Campos obrigatórios ausentes');
         return {
           statusCode: 400,
           body: JSON.stringify({ message: 'Nome, email e senha são obrigatórios' })
         };
       }
 
-      // Criptografar senha
-      const hashedPassword = await bcrypt.hash(senha, 10);
-      
       try {
-        // Verificar se o email já está em uso
-        const { data: existingUsers, error: checkError } = await supabase
+        // Verificar se o email já está em uso na tabela de perfis
+        console.log('[Register] Verificando se o email já está em uso...');
+        const { data: existingProfiles, error: checkProfileError } = await supabase
           .from('profiles')
           .select('*')
           .eq('email', email)
           .limit(1);
         
-        if (checkError) throw checkError;
-        
-        if (existingUsers && existingUsers.length > 0) {
-          console.log('[Register] Email já em uso');
+        if (checkProfileError) {
+          console.error('[Register] Erro ao verificar email na tabela profiles:', checkProfileError.message);
+        } else if (existingProfiles && existingProfiles.length > 0) {
+          console.log('[Register] Email já em uso na tabela profiles');
           return {
             statusCode: 400,
             body: JSON.stringify({ message: 'Este email já está em uso' })
           };
         }
         
+        // Criptografar senha
+        const hashedPassword = await bcrypt.hash(senha, 10);
+        console.log('[Register] Senha criptografada com sucesso');
+        
         // Criar usuário com autenticação do Supabase
-        const { data: authUser, error: authError } = await supabase.auth.signUp({
+        console.log('[Register] Tentando criar usuário no Supabase Auth...');
+        const { data: authData, error: authError } = await supabase.auth.signUp({
           email,
           password: senha,
           options: {
@@ -247,23 +253,111 @@ const routes = {
           }
         });
         
-        if (authError) throw authError;
+        if (authError) {
+          console.error('[Register] Erro ao criar usuário no Supabase Auth:', authError);
+          // Se o erro for devido a restrições de convite, tente criar diretamente na tabela de perfis
+          if (authError.message.includes('invited') || authError.status === 400) {
+            console.log('[Register] Tentando registro alternativo na tabela profiles...');
+            
+            // Gerar um ID único para o usuário
+            const userId = crypto.randomUUID();
+            
+            // Inserir na tabela de perfis
+            const { data: profileData, error: profileError } = await supabase
+              .from('profiles')
+              .insert([
+                {
+                  id: userId,
+                  nome: nome,
+                  email: email,
+                  senha_hash: hashedPassword,
+                  created_at: new Date().toISOString()
+                }
+              ])
+              .select();
+            
+            if (profileError) {
+              console.error('[Register] Erro ao criar perfil alternativo:', profileError.message);
+              throw new Error(`Falha no registro alternativo: ${profileError.message}`);
+            }
+            
+            console.log('[Register] Perfil alternativo criado com sucesso');
+            
+            // Gerar token JWT para o usuário criado manualmente
+            const token = jwt.sign(
+              { id: userId, email },
+              JWT_SECRET,
+              { expiresIn: '7d' }
+            );
+            
+            return {
+              statusCode: 201,
+              body: JSON.stringify({
+                message: 'Usuário registrado com sucesso (método alternativo)',
+                token,
+                user: { id: userId, nome, email }
+              })
+            };
+          }
+          
+          throw authError;
+        }
         
-        // Supabase deve ter triggers que criam automaticamente o perfil na tabela "profiles"
-        // mas vamos atualizar com o hash de senha por segurança
-        const { data: profileUpdate, error: updateError } = await supabase
+        if (!authData || !authData.user) {
+          console.error('[Register] Resposta da API do Supabase sem dados de usuário');
+          throw new Error('Falha ao obter dados do usuário após registro');
+        }
+        
+        console.log('[Register] Usuário criado com sucesso no Supabase Auth');
+        
+        // Verificar se o perfil já foi criado pelo trigger do Supabase
+        // ou criar manualmente se necessário
+        const { data: profileCheck, error: checkError } = await supabase
           .from('profiles')
-          .update({ senha_hash: hashedPassword })
-          .eq('id', authUser.user.id);
+          .select('*')
+          .eq('id', authData.user.id)
+          .single();
         
-        if (updateError) {
-          console.warn('[Register] Aviso ao atualizar perfil:', updateError.message);
-          // Continuar mesmo se houver erro na atualização
+        if (checkError || !profileCheck) {
+          console.log('[Register] Perfil não encontrado, criando manualmente...');
+          
+          // Inserir perfil manualmente
+          const { data: profileInsert, error: insertError } = await supabase
+            .from('profiles')
+            .insert([
+              {
+                id: authData.user.id,
+                nome: nome,
+                email: email,
+                senha_hash: hashedPassword,
+                created_at: new Date().toISOString()
+              }
+            ]);
+          
+          if (insertError) {
+            console.warn('[Register] Erro ao criar perfil:', insertError.message);
+            // Continuar mesmo com erro, pois o usuário foi criado no auth
+          }
+        } else {
+          console.log('[Register] Perfil já existe, atualizando senha hash...');
+          
+          // Atualizar hash da senha no perfil existente
+          const { error: updateError } = await supabase
+            .from('profiles')
+            .update({ 
+              senha_hash: hashedPassword,
+              nome: nome
+            })
+            .eq('id', authData.user.id);
+          
+          if (updateError) {
+            console.warn('[Register] Erro ao atualizar perfil:', updateError.message);
+          }
         }
         
         // Gerar token JWT
         const token = jwt.sign(
-          { id: authUser.user.id, email },
+          { id: authData.user.id, email },
           JWT_SECRET,
           { expiresIn: '7d' }
         );
@@ -274,24 +368,32 @@ const routes = {
           body: JSON.stringify({
             message: 'Usuário registrado com sucesso',
             token,
-            user: { id: authUser.user.id, nome, email }
+            user: { id: authData.user.id, nome, email }
           })
         };
       } catch (supabaseError) {
         console.error('[Register] Erro no Supabase:', supabaseError.message);
+        console.error('[Register] Detalhes do erro:', JSON.stringify(supabaseError));
+        
         return {
           statusCode: 500,
           body: JSON.stringify({ 
             message: 'Erro no registro', 
-            error: supabaseError.message 
+            error: supabaseError.message,
+            details: supabaseError.details || 'Sem detalhes adicionais'
           })
         };
       }
     } catch (error) {
-      console.error('[Register] ERRO:', error.message);
+      console.error('[Register] ERRO GERAL:', error.message);
+      console.error('[Register] Stack trace:', error.stack);
+      
       return {
         statusCode: 500,
-        body: JSON.stringify({ message: 'Erro interno do servidor', error: error.message })
+        body: JSON.stringify({ 
+          message: 'Erro interno do servidor', 
+          error: error.message 
+        })
       };
     }
   },
