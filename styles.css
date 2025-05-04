@@ -1,5 +1,30 @@
-/* Variáveis de cores */
+/* Variáveis de cores para tema claro e escuro */
 :root {
+    /* Tema claro (padrão) */
+    --primary-color: #5664d2;
+    --primary-hover: #4451b8;
+    --background-color: #f5f7fb;
+    --card-bg: #ffffff;
+    --text-color: #343a40;
+    --text-muted: #6c757d;
+    --border-color: #dee2e6;
+    --input-bg: #ffffff;
+    --input-border: #ced4da;
+    --navbar-bg: #5664d2;
+    --navbar-text: #ffffff;
+    --success-color: #28a745;
+    --danger-color: #dc3545;
+    --warning-color: #ffc107;
+    --info-color: #17a2b8;
+    --modal-bg: #ffffff;
+    --hover-bg: #f8f9fa;
+    --box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+    --card-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    --income-color: #28a745;
+    --expense-color: #dc3545;
+    --menu-hover-bg: #f0f2f5;
+    --code-bg: #f8f9fa;
+    
     /* Cores principais */
     --primary: #4361ee;
     --primary-dark: #3a56d4;
@@ -14,22 +39,41 @@
     --gray-light: #e9ecef;
     --shadow: rgba(0, 0, 0, 0.1);
     
-    /* Cores para tema claro (padrão) */
-    --bg-color: #f0f2f5;
-    --card-bg: #ffffff;
-    --text-color: #333333;
-    --border-color: #e9ecef;
-    
     /* Variáveis de animação */
     --transition-speed: 0.3s;
 }
 
-/* Tema escuro (será ativado via JavaScript) */
+/* Tema escuro */
 [data-theme="dark"] {
-    --bg-color: #121212;
+    --primary-color: #6c7dff;
+    --primary-hover: #8693ff;
+    --background-color: #121212;
     --card-bg: #1e1e1e;
-    --text-color: #f0f2f5;
+    --text-color: #e1e1e1;
+    --text-muted: #b0b0b0;
     --border-color: #2d2d2d;
+    --input-bg: #2d2d2d;
+    --input-border: #444444;
+    --navbar-bg: #1a1a1a;
+    --navbar-text: #ffffff;
+    --success-color: #48bb78;
+    --danger-color: #f56565;
+    --warning-color: #ecc94b;
+    --info-color: #4299e1;
+    --modal-bg: #2d2d2d;
+    --hover-bg: #333333;
+    --box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.5);
+    --card-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.3);
+    --income-color: #48bb78;
+    --expense-color: #f56565;
+    --menu-hover-bg: #333333;
+    --code-bg: #2d2d2d;
+}
+
+/* Transições suaves ao mudar de tema */
+body, .navbar, .btn, .form-control, .card, .modal-content, 
+.transaction-form-card, .finance-summary, .theme-toggle {
+    transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
 }
 
 /* Reset e estilos gerais */
@@ -41,11 +85,16 @@
 
 body {
     font-family: 'Poppins', 'Segoe UI', 'Roboto', 'Helvetica Neue', sans-serif;
-    background-color: var(--bg-color);
+    background-color: var(--background-color);
     color: var(--text-color);
     line-height: 1.6;
     transition: background-color var(--transition-speed) ease;
     padding-bottom: 50px; /* Adicionado para evitar que o conteúdo fique atrás do toggle de tema */
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
 }
 
 /* Removendo o gradiente problematico */
@@ -980,4 +1029,72 @@ body::before {
         width: 100%;
         justify-content: center;
     }
+}
+
+/* Melhorias para o modo escuro */
+[data-theme="dark"] .card,
+[data-theme="dark"] .modal-content,
+[data-theme="dark"] .dropdown-menu,
+[data-theme="dark"] .form-control,
+[data-theme="dark"] .form-select,
+[data-theme="dark"] .transaction-form-card {
+    background-color: var(--card-bg);
+    border-color: var(--border-color);
+}
+
+[data-theme="dark"] .form-control,
+[data-theme="dark"] .form-select {
+    color: var(--text-color);
+    background-color: var(--input-bg);
+}
+
+[data-theme="dark"] .modal-content {
+    background-color: var(--modal-bg);
+}
+
+[data-theme="dark"] .dropdown-menu {
+    background-color: var(--card-bg);
+}
+
+[data-theme="dark"] .dropdown-item:hover {
+    background-color: var(--menu-hover-bg);
+}
+
+[data-theme="dark"] .table {
+    color: var(--text-color);
+}
+
+[data-theme="dark"] .table tbody tr:hover {
+    background-color: var(--hover-bg);
+}
+
+[data-theme="dark"] .btn-close {
+    filter: invert(1) grayscale(100%) brightness(200%);
+}
+
+[data-theme="dark"] .transactions-table thead th {
+    background-color: var(--card-bg);
+    border-color: var(--border-color);
+}
+
+[data-theme="dark"] .transactions-table tbody tr {
+    border-color: var(--border-color);
+}
+
+[data-theme="dark"] .action-btn {
+    color: var(--text-color);
+}
+
+[data-theme="dark"] .action-btn:hover {
+    background-color: var(--hover-bg);
+}
+
+[data-theme="dark"] .transaction-category-icon {
+    background-color: var(--hover-bg);
+}
+
+[data-theme="dark"] .filter-select {
+    background-color: var(--input-bg);
+    color: var(--text-color);
+    border-color: var(--border-color);
 } 

@@ -131,14 +131,19 @@ const routes = {
       if (supabase) {
         console.log('[Login] Usando Supabase...');
         try {
-          // Buscar usuário pelo email
+          // Buscar usuário pelo email na tabela profiles
           const { data: users, error } = await supabase
-            .from('users')
+            .from('profiles')
             .select('*')
             .eq('email', email)
             .limit(1);
           
-          if (error) throw error;
+          console.log('[Login] Resultado da consulta:', users);
+          
+          if (error) {
+            console.error('[Login] Erro ao buscar usuário:', error.message);
+            throw error;
+          }
           
           const user = users && users.length > 0 ? users[0] : null;
           
@@ -151,9 +156,9 @@ const routes = {
           }
           
           // Verificar senha
-          const isPasswordValid = await bcrypt.compare(senha, user.senha_hash);
+          const senhaCorreta = await bcrypt.compare(senha, user.senha_hash || user.senha);
           
-          if (!isPasswordValid) {
+          if (!senhaCorreta) {
             console.log('[Login] Senha inválida');
             return {
               statusCode: 401,
@@ -309,9 +314,9 @@ const routes = {
       if (supabase) {
         console.log('[Register] Usando Supabase...');
         try {
-          // Verificar se o email já está em uso
+          // Verificar se o email já está em uso na tabela profiles
           const { data: existingUsers, error: checkError } = await supabase
-            .from('users')
+            .from('profiles')
             .select('*')
             .eq('email', email)
             .limit(1);
@@ -326,25 +331,34 @@ const routes = {
             };
           }
           
-          // Inserir novo usuário
-          const { data: newUser, error: insertError } = await supabase
-            .from('users')
-            .insert([
-              { 
-                nome, 
-                email, 
-                senha_hash: hashedPassword
+          // Primeiro, criar autenticação com auth/users
+          const { data: authUser, error: authError } = await supabase.auth.signUp({
+            email,
+            password: senha,
+            options: {
+              data: {
+                nome
               }
-            ])
-            .select();
+            }
+          });
           
-          if (insertError) throw insertError;
+          if (authError) throw authError;
           
-          const user = newUser[0];
+          // O trigger criará automaticamente o perfil na tabela profiles,
+          // mas vamos atualizar com o hash de senha por segurança
+          const { data: profileUpdate, error: updateError } = await supabase
+            .from('profiles')
+            .update({ senha_hash: hashedPassword })
+            .eq('id', authUser.user.id);
+          
+          if (updateError) {
+            console.warn('[Register] Aviso ao atualizar perfil:', updateError.message);
+            // Continuar mesmo se houver erro na atualização
+          }
           
           // Gerar token JWT
           const token = jwt.sign(
-            { id: user.id, email },
+            { id: authUser.user.id, email },
             JWT_SECRET,
             { expiresIn: '7d' }
           );
@@ -355,7 +369,7 @@ const routes = {
             body: JSON.stringify({
               message: 'Usuário registrado com sucesso',
               token,
-              user: { id: user.id, nome, email }
+              user: { id: authUser.user.id, nome, email }
             })
           };
         } catch (supabaseError) {
@@ -698,6 +712,147 @@ const routes = {
       };
     } catch (error) {
       console.error('[DeleteTransaction] ERRO:', error.message);
+      return {
+        statusCode: 500,
+        body: JSON.stringify({ message: 'Erro interno do servidor', error: error.message })
+      };
+    }
+  },
+  
+  // Rota para adicionar uma nova transação
+  'POST /transactions': async (event) => {
+    try {
+      console.log('[AddTransaction] Iniciando processamento...');
+      const authResult = await authenticateToken(event.headers.authorization);
+      
+      if (!authResult.authenticated) {
+        return {
+          statusCode: 401,
+          body: JSON.stringify({ message: authResult.error })
+        };
+      }
+      
+      // Extrair dados da requisição
+      let requestBody;
+      try {
+        requestBody = JSON.parse(event.body);
+      } catch (err) {
+        return {
+          statusCode: 400,
+          body: JSON.stringify({ message: 'Formato JSON inválido' })
+        };
+      }
+      
+      const { title, amount, type, category, date, content } = requestBody;
+      const userId = authResult.user.id;
+      
+      console.log('[AddTransaction] Dados recebidos:', { title, amount, type, category, date });
+      
+      // Validar campos obrigatórios
+      if (!title || !amount || !type || !category || !date) {
+        return {
+          statusCode: 400,
+          body: JSON.stringify({ message: 'Todos os campos obrigatórios devem ser preenchidos' })
+        };
+      }
+      
+      // Tentar salvar no Supabase
+      if (supabase) {
+        console.log('[AddTransaction] Usando Supabase...');
+        try {
+          // Inserir transação
+          const { data, error } = await supabase
+            .from('transacoes')
+            .insert([
+              {
+                user_id: userId,
+                usuario_id: userId, // Usar ambos para compatibilidade
+                title: title,
+                descricao: title,
+                amount: parseFloat(amount),
+                valor: parseFloat(amount),
+                type: type,
+                tipo: type,
+                category: category,
+                categoria: category,
+                date: date,
+                data: date,
+                content: content || ''
+              }
+            ])
+            .select();
+          
+          if (error) {
+            console.error('[AddTransaction] Erro ao salvar no Supabase:', error.message);
+            throw error;
+          }
+          
+          console.log('[AddTransaction] Transação salva no Supabase:', data);
+          return {
+            statusCode: 201,
+            body: JSON.stringify({ 
+              message: 'Transação adicionada com sucesso',
+              transaction: data[0]
+            })
+          };
+        } catch (supabaseError) {
+          console.error('[AddTransaction] Erro no Supabase:', supabaseError.message);
+          // Se falhar, tentar modo offline se habilitado
+          if (!MODO_OFFLINE) {
+            return {
+              statusCode: 500,
+              body: JSON.stringify({ 
+                message: 'Erro ao adicionar transação', 
+                error: supabaseError.message 
+              })
+            };
+          }
+          // Prosseguir para modo offline
+          console.log('[AddTransaction] Caindo para modo offline devido a erro do Supabase');
+        }
+      }
+      
+      // Modo offline para transações
+      if (MODO_OFFLINE) {
+        console.log('[AddTransaction] Usando modo offline...');
+        
+        // Criar ID para transação
+        const timestamp = Math.floor(new Date().getTime() / 1000).toString(16).padStart(8, '0');
+        const random = Math.floor(Math.random() * 16777216).toString(16).padStart(6, '0');
+        const id = `${timestamp}-${random}`;
+        
+        // Criar objeto de transação
+        const transaction = {
+          id,
+          user_id: userId,
+          title,
+          amount: parseFloat(amount),
+          type,
+          category,
+          date,
+          content: content || '',
+          created_at: new Date().toISOString()
+        };
+        
+        // Adicionar ao DB local
+        dbLocal.transacoes.push(transaction);
+        
+        console.log('[AddTransaction] Transação salva localmente');
+        return {
+          statusCode: 201,
+          body: JSON.stringify({ 
+            message: 'Transação adicionada com sucesso (modo offline)',
+            transaction
+          })
+        };
+      }
+      
+      return {
+        statusCode: 501,
+        body: JSON.stringify({ message: 'Funcionalidade não implementada' })
+      };
+    } catch (error) {
+      console.error('[AddTransaction] ERRO:', error.message);
       return {
         statusCode: 500,
         body: JSON.stringify({ message: 'Erro interno do servidor', error: error.message })
