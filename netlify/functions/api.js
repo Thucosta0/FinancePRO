@@ -8,25 +8,46 @@ const fetch = require('node-fetch');
 const MONGODB_URI = process.env.MONGODB_URI;
 const JWT_SECRET = process.env.JWT_SECRET || 'secreto-do-jwt-aqui';
 
+// Log das configurações (sem mostrar senhas completas)
+console.log('Iniciando API FinançasPRO no Netlify');
+console.log('MongoDB URI configurado:', MONGODB_URI ? 'Sim' : 'Não');
+console.log('JWT Secret configurado:', JWT_SECRET ? 'Sim' : 'Não');
+
 // Cliente MongoDB
 let cachedDb = null;
 
 // Função para conectar ao MongoDB
 async function connectToDatabase() {
+  console.log('Tentando conectar ao MongoDB...');
+  
   if (cachedDb) {
+    console.log('Usando conexão MongoDB em cache');
     return cachedDb;
   }
   
-  const client = new MongoClient(MONGODB_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-    serverSelectionTimeoutMS: 5000
-  });
+  if (!MONGODB_URI) {
+    console.error('URL de conexão MongoDB não definida!');
+    throw new Error('MONGODB_URI não configurado nas variáveis de ambiente');
+  }
   
-  await client.connect();
-  const db = client.db('financas-pro');
-  cachedDb = db;
-  return db;
+  try {
+    console.log('Criando nova conexão com MongoDB');
+    const client = new MongoClient(MONGODB_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+      serverSelectionTimeoutMS: 5000
+    });
+    
+    await client.connect();
+    console.log('Conexão com MongoDB estabelecida com sucesso');
+    
+    const db = client.db('financas-pro');
+    cachedDb = db;
+    return db;
+  } catch (error) {
+    console.error('Erro ao conectar ao MongoDB:', error);
+    throw error;
+  }
 }
 
 // Middleware para autenticação
@@ -101,20 +122,28 @@ const routes = {
   // Rota de registro
   'POST /register': async (event) => {
     try {
+      console.log('Iniciando processamento da rota /register');
+      
       const { nome, email, senha } = JSON.parse(event.body);
+      console.log(`Tentativa de registro para o email: ${email}`);
       
       if (!nome || !email || !senha) {
+        console.log('Dados incompletos no registro');
         return {
           statusCode: 400,
           body: JSON.stringify({ message: 'Dados incompletos' })
         };
       }
       
+      console.log('Conectando ao banco de dados...');
       const db = await connectToDatabase();
+      console.log('Conexão ao banco estabelecida');
       
       // Verificar se o email já está cadastrado
+      console.log('Verificando se o email já existe...');
       const existingUser = await db.collection('users').findOne({ email });
       if (existingUser) {
+        console.log('Email já está em uso');
         return {
           statusCode: 400,
           body: JSON.stringify({ message: 'Este email já está em uso.' })
@@ -151,7 +180,10 @@ const routes = {
       console.error("Erro ao registrar usuário:", error);
       return {
         statusCode: 500,
-        body: JSON.stringify({ message: 'Erro interno do servidor' })
+        body: JSON.stringify({ 
+          message: 'Erro interno do servidor',
+          error: process.env.NODE_ENV === 'development' ? error.message : 'Erro interno'
+        })
       };
     }
   },
@@ -159,20 +191,28 @@ const routes = {
   // Rota de login
   'POST /login': async (event) => {
     try {
+      console.log('Iniciando processamento da rota /login');
+      
       const { email, senha } = JSON.parse(event.body);
+      console.log(`Tentativa de login para o email: ${email}`);
       
       if (!email || !senha) {
+        console.log('Email ou senha não fornecidos');
         return {
           statusCode: 400,
           body: JSON.stringify({ message: 'Email e senha são obrigatórios' })
         };
       }
       
+      console.log('Conectando ao banco de dados...');
       const db = await connectToDatabase();
+      console.log('Conexão ao banco estabelecida');
       
       // Buscar usuário pelo email
+      console.log('Buscando usuário no banco de dados...');
       const user = await db.collection('users').findOne({ email });
       if (!user) {
+        console.log('Usuário não encontrado');
         return {
           statusCode: 401,
           body: JSON.stringify({ message: 'Email ou senha inválidos' })
@@ -207,7 +247,10 @@ const routes = {
       console.error("Erro ao fazer login:", error);
       return {
         statusCode: 500,
-        body: JSON.stringify({ message: 'Erro interno do servidor' })
+        body: JSON.stringify({ 
+          message: 'Erro interno do servidor',
+          error: process.env.NODE_ENV === 'development' ? error.message : 'Erro interno'
+        })
       };
     }
   },
@@ -260,9 +303,12 @@ exports.handler = async (event, context) => {
   // Configurar para reutilizar conexão com MongoDB entre invocações
   context.callbackWaitsForEmptyEventLoop = false;
   
+  console.log(`Recebida requisição: ${event.httpMethod} ${event.path}`);
+  
   // Construir identificador de rota
   const path = event.path.replace('/.netlify/functions/api', '');
   const routeKey = `${event.httpMethod} ${path}`;
+  console.log(`Rota identificada: ${routeKey}`);
   
   // Adicionar cabeçalhos CORS
   const headers = {
@@ -273,6 +319,7 @@ exports.handler = async (event, context) => {
   
   // Responder a solicitações OPTIONS (CORS preflight)
   if (event.httpMethod === 'OPTIONS') {
+    console.log('Requisição CORS preflight detectada, retornando 204');
     return {
       statusCode: 204,
       headers
@@ -282,31 +329,39 @@ exports.handler = async (event, context) => {
   // Verificar se a rota existe
   const route = routes[routeKey];
   if (route) {
+    console.log(`Rota encontrada: ${routeKey}`);
     try {
       // Executar função da rota
       const response = await route(event);
       // Adicionar cabeçalhos CORS à resposta
+      console.log(`Resposta para ${routeKey}: Status ${response.statusCode}`);
       return {
         ...response,
         headers: { ...headers, ...response.headers }
       };
     } catch (error) {
       console.error(`Erro ao processar rota ${routeKey}:`, error);
+      console.error('Stack trace:', error.stack);
       return {
         statusCode: 500,
         headers,
         body: JSON.stringify({
           message: 'Erro interno do servidor',
-          error: process.env.NODE_ENV === 'development' ? error.message : undefined
+          error: error.message,
+          stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
         })
       };
     }
   }
   
   // Rota não encontrada
+  console.log(`Rota não encontrada: ${routeKey}`);
   return {
     statusCode: 404,
     headers,
-    body: JSON.stringify({ message: 'Rota não encontrada' })
+    body: JSON.stringify({ 
+      message: 'Rota não encontrada',
+      requestedPath: path
+    })
   };
 }; 
