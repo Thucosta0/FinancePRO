@@ -41,47 +41,6 @@ const authenticateToken = async (authHeader) => {
 
 // Rotas da API
 const routes = {
-  // Rota de teste
-  'GET /test': async () => {
-    return {
-      statusCode: 200,
-      body: JSON.stringify({
-        message: 'API funcionando corretamente (Netlify Functions)',
-        timestamp: new Date().toISOString(),
-        mode: 'Supabase',
-        environment: process.env.NODE_ENV || 'development'
-      })
-    };
-  },
-  
-  // Rota de status
-  'GET /status': async () => {
-    try {
-      // Testar conexão com Supabase
-      const { data, error } = await supabase.from('profiles').select('count', { count: 'exact', head: true });
-      const status = error ? 'error' : 'connected';
-      
-      return {
-        statusCode: 200,
-        body: JSON.stringify({
-          status: "operational",
-          supabase: status,
-          timestamp: new Date().toISOString(),
-          message: "Sistema funcionando com Supabase"
-        })
-      };
-    } catch (err) {
-      return {
-        statusCode: 500,
-        body: JSON.stringify({
-          status: "error",
-          message: "Erro ao verificar status do Supabase",
-          error: err.message
-        })
-      };
-    }
-  },
-  
   // Rota de login
   'POST /login': async (event) => {
     console.log('[Login] Iniciando processamento de login...');
