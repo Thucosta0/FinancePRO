@@ -4,12 +4,12 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 
 // ===== CONFIGURAÇÕES SUPABASE =====
-// Substitua pelos dados do seu projeto Supabase
-const SUPABASE_URL = 'https://sua-url-do-projeto.supabase.co';
-const SUPABASE_KEY = 'sua-chave-anon-key';
+// Credenciais do projeto Supabase
+const SUPABASE_URL = 'https://tqorakmunmdmfhpupcxa.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRxb3Jha211bm1kbWZocHVwY3hhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MjA0OTYwMTksImV4cCI6MjAzNjA3MjAxOX0.eyJpc3MiOiJzdXBhYmFzZSJ9';
 
 // Opção de modo offline (fallback se Supabase não funcionar)
-const MODO_OFFLINE = true; // Mude para false depois de configurar o Supabase
+const MODO_OFFLINE = true; // Mude para false depois de testar a conexão com Supabase
 
 // Inicializar o cliente Supabase
 const supabase = SUPABASE_URL && SUPABASE_KEY ? 
