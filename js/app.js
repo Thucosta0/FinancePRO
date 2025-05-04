@@ -3,9 +3,30 @@
 // URL base para todas as chamadas de API
 const API_BASE_URL = '/.netlify/functions/api'; // Atualizado para usar as funções do Netlify
 
+// Dados de emergência (para caso o MongoDB não esteja acessível)
+const EMERGENCY_EMAIL = 'teste@financaspro.com';
+const EMERGENCY_PASSWORD = 'teste123';
+
 // Elementos do DOM
 document.addEventListener('DOMContentLoaded', () => {
     initApp();
+    
+    // Adicionar link de emergência
+    const loginForm = document.getElementById('login-form');
+    if (loginForm) {
+        const emergencyLoginLink = document.createElement('a');
+        emergencyLoginLink.href = '#';
+        emergencyLoginLink.className = 'emergency-login text-center d-block mt-2 small text-muted';
+        emergencyLoginLink.textContent = 'Problemas para entrar? Use a conta de teste';
+        emergencyLoginLink.onclick = (e) => {
+            e.preventDefault();
+            document.getElementById('email').value = EMERGENCY_EMAIL;
+            document.getElementById('senha').value = EMERGENCY_PASSWORD;
+            loginForm.dispatchEvent(new Event('submit'));
+        };
+        
+        loginForm.appendChild(emergencyLoginLink);
+    }
 });
 
 // Elementos globais
