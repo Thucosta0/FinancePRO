@@ -1,7 +1,7 @@
 // app.js - Versão corrigida para FinançasPro com autenticação via MongoDB
 
 // URL base para todas as chamadas de API
-const API_BASE_URL = 'https://financaspro-api.onrender.com'; // Substitua pelo URL real do seu servidor
+const API_BASE_URL = '/.netlify/functions/api'; // Atualizado para usar as funções do Netlify
 
 // Elementos do DOM
 document.addEventListener('DOMContentLoaded', () => {
