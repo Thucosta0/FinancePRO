@@ -1,5 +1,5 @@
 // Função simples para testar a implantação no Netlify
-module.exports = async (event, context) => {
+exports.handler = async (event, context) => {
   return {
     statusCode: 200,
     headers: {
