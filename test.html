@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste de Função Netlify</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #3f51b5;
+            border-bottom: 2px solid #f0f0f0;
+            padding-bottom: 10px;
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #3f51b5;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background-color: #303f9f;
+        }
+        pre {
+            background-color: #f5f5f5;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
+        .error {
+            color: red;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>FinançasPRO - Teste de Funções Netlify</h1>
+        <p>Esta página é para testar as funções serverless do Netlify.</p>
+        
+        <h2>Testes Disponíveis</h2>
+        
+        <div>
+            <button id="testHello">Testar função Hello</button>
+            <button id="testApi">Testar função API Test</button>
+            <button id="testApiHealthcheck">Testar API Healthcheck</button>
+        </div>
+        
+        <h3>Resultado:</h3>
+        <pre id="result">Clique em um dos botões acima para testar...</pre>
+    </div>
+
+    <script>
+        document.getElementById('testHello').addEventListener('click', async () => {
+            try {
+                const result = document.getElementById('result');
+                result.textContent = 'Carregando...';
+                result.className = '';
+                
+                const response = await fetch('/.netlify/functions/hello');
+                if (!response.ok) {
+                    throw new Error(`Status: ${response.status} ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                result.textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                const result = document.getElementById('result');
+                result.textContent = `Erro: ${error.message}`;
+                result.className = 'error';
+            }
+        });
+
+        document.getElementById('testApi').addEventListener('click', async () => {
+            try {
+                const result = document.getElementById('result');
+                result.textContent = 'Carregando...';
+                result.className = '';
+                
+                const response = await fetch('/.netlify/functions/api/test');
+                if (!response.ok) {
+                    throw new Error(`Status: ${response.status} ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                result.textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                const result = document.getElementById('result');
+                result.textContent = `Erro: ${error.message}`;
+                result.className = 'error';
+            }
+        });
+
+        document.getElementById('testApiHealthcheck').addEventListener('click', async () => {
+            try {
+                const result = document.getElementById('result');
+                result.textContent = 'Carregando...';
+                result.className = '';
+                
+                const response = await fetch('/.netlify/functions/api/healthcheck');
+                if (!response.ok) {
+                    throw new Error(`Status: ${response.status} ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                result.textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                const result = document.getElementById('result');
+                result.textContent = `Erro: ${error.message}`;
+                result.className = 'error';
+            }
+        });
+    </script>
+</body>
+</html> 
