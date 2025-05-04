@@ -3,8 +3,6 @@ const { createClient } = require('@supabase/supabase-js');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
-const fs = require('fs');
-const path = require('path');
 
 // ===== CONFIGURAÇÕES SUPABASE =====
 // Credenciais do projeto Supabase
@@ -16,12 +14,6 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // Configurações
 const JWT_SECRET = 'financaspro-secure-token-2024';
-
-// Usuários de emergência (em memória)
-let emergencyUsers = [];
-
-// Transações de emergência (em memória)
-let emergencyTransactions = [];
 
 // Middleware para autenticação
 const authenticateToken = async (authHeader) => {
@@ -70,42 +62,6 @@ const routes = {
         };
       }
 
-      // Verificar usuários de emergência primeiro
-      const emergencyUser = emergencyUsers.find(u => u.email === email);
-      if (emergencyUser) {
-        console.log('[Login] Usuário de emergência encontrado:', email);
-        const senhaCorreta = await bcrypt.compare(senha, emergencyUser.senha_hash);
-        
-        if (senhaCorreta) {
-          // Gerar token JWT
-          const token = jwt.sign(
-            { id: emergencyUser.id, email: emergencyUser.email },
-            JWT_SECRET,
-            { expiresIn: '7d' }
-          );
-          
-          console.log('[Login] Login bem-sucedido via sistema de emergência');
-          return {
-            statusCode: 200,
-            body: JSON.stringify({
-              message: 'Login realizado com sucesso',
-              token,
-              user: { 
-                id: emergencyUser.id, 
-                nome: emergencyUser.nome, 
-                email: emergencyUser.email 
-              }
-            })
-          };
-        } else {
-          return {
-            statusCode: 401,
-            body: JSON.stringify({ message: 'Email ou senha inválidos' })
-          };
-        }
-      }
-
-      // Se não encontrou nos usuários de emergência, tentar no Supabase
       try {
         // Primeiro, tente fazer login com a autenticação nativa do Supabase
         const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
@@ -233,9 +189,9 @@ const routes = {
     }
   },
   
-  // Rota de registro - MODO DE EMERGÊNCIA (Sem dependência do Supabase)
+  // Rota de registro
   'POST /register': async (event) => {
-    console.log('[Register] Iniciando processamento de registro em modo de emergência...');
+    console.log('[Register] Iniciando processamento de registro...');
     
     try {
       // Processar corpo da requisição
@@ -261,36 +217,73 @@ const routes = {
         };
       }
 
-      // Verificar se o email já existe nos usuários de emergência
-      if (emergencyUsers.some(u => u.email === email)) {
-        console.error('[Register] Email já está em uso no sistema de emergência:', email);
-        return {
-          statusCode: 400,
-          body: JSON.stringify({ message: 'Este email já está em uso' })
-        };
-      }
-
       try {
-        // Gerar ID único
-        const userId = crypto.randomUUID();
-        console.log(`[Register] Criando usuário com ID: ${userId}`);
+        // Verificar se o email já está em uso
+        const { data: existingProfiles, error: checkError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('email', email)
+          .limit(1);
+        
+        if (checkError) {
+          console.error('[Register] Erro ao verificar email existente:', checkError.message);
+        } else if (existingProfiles && existingProfiles.length > 0) {
+          console.log('[Register] Email já em uso na tabela profiles');
+          return {
+            statusCode: 400,
+            body: JSON.stringify({ message: 'Este email já está em uso' })
+          };
+        }
         
         // Criptografar senha
         const hashedPassword = await bcrypt.hash(senha, 10);
         
-        // Criar novo usuário
-        const newUser = {
-          id: userId,
-          email: email,
-          nome: nome,
-          senha_hash: hashedPassword,
-          created_at: new Date().toISOString(),
-          emergency: true
-        };
+        // Para contornar problemas com a autenticação nativa do Supabase,
+        // vamos criar o usuário diretamente na tabela profiles
+        const userId = crypto.randomUUID();
+        console.log(`[Register] Criando usuário com ID: ${userId}`);
         
-        // Adicionar à lista de usuários de emergência
-        emergencyUsers.push(newUser);
-        console.log('[Register] Usuário adicionado ao sistema de emergência:', newUser.email);
+        // Inserir o usuário na tabela profiles
+        const { data: newUser, error: insertError } = await supabase
+          .from('profiles')
+          .insert([
+            {
+              id: userId,
+              nome: nome,
+              email: email,
+              senha_hash: hashedPassword,
+              created_at: new Date().toISOString()
+            }
+          ]);
+        
+        if (insertError) {
+          console.error('[Register] Erro ao criar perfil:', insertError.message);
+          throw insertError;
+        }
+        
+        console.log('[Register] Perfil criado com sucesso!');
+        
+        // Tentar também criar o usuário na autenticação do Supabase,
+        // mas não falhar se não conseguir
+        try {
+          const { data: authUser, error: authError } = await supabase.auth.signUp({
+            email,
+            password: senha,
+            options: {
+              data: {
+                nome
+              }
+            }
+          });
+          
+          if (authError) {
+            console.warn('[Register] Aviso: não foi possível criar usuário na autenticação do Supabase:', authError.message);
+          } else {
+            console.log('[Register] Usuário criado também na autenticação do Supabase');
+          }
+        } catch (authError) {
+          console.warn('[Register] Aviso: erro ao criar usuário na autenticação do Supabase:', authError.message);
+        }
         
         // Gerar token JWT
         const token = jwt.sign(
@@ -302,13 +295,13 @@ const routes = {
         return {
           statusCode: 201,
           body: JSON.stringify({
-            message: 'Usuário registrado com sucesso (modo de emergência)',
+            message: 'Usuário registrado com sucesso',
             token,
             user: { id: userId, nome, email }
           })
         };
       } catch (error) {
-        console.error('[Register] Erro no registro de emergência:', error.message);
+        console.error('[Register] Erro ao criar usuário:', error.message);
         
         return {
           statusCode: 500,
@@ -347,24 +340,6 @@ const routes = {
       
       const userId = authResult.user.id;
       
-      // Verificar primeiro no sistema de emergência
-      const emergencyUser = emergencyUsers.find(u => u.id === userId);
-      if (emergencyUser) {
-        console.log('[UserMe] Usuário encontrado no sistema de emergência');
-        return {
-          statusCode: 200,
-          body: JSON.stringify({ 
-            user: {
-              id: emergencyUser.id,
-              nome: emergencyUser.nome,
-              email: emergencyUser.email,
-              created_at: emergencyUser.created_at
-            }
-          })
-        };
-      }
-      
-      // Se não encontrado no sistema de emergência, buscar no Supabase
       try {
         const { data: user, error } = await supabase
           .from('profiles')
@@ -386,13 +361,13 @@ const routes = {
           statusCode: 200,
           body: JSON.stringify({ user })
         };
-      } catch (supabaseError) {
-        console.error('[UserMe] Erro no Supabase:', supabaseError.message);
+      } catch (error) {
+        console.error('[UserMe] Erro ao buscar usuário:', error.message);
         return {
           statusCode: 500,
           body: JSON.stringify({ 
             message: 'Erro ao obter perfil', 
-            error: supabaseError.message 
+            error: error.message 
           })
         };
       }
@@ -420,20 +395,6 @@ const routes = {
       
       const userId = authResult.user.id;
       
-      // Verificar se é um usuário de emergência
-      const isEmergencyUser = emergencyUsers.some(u => u.id === userId);
-      if (isEmergencyUser) {
-        console.log('[Transactions] Buscando transações no sistema de emergência para usuário:', userId);
-        // Filtrar transações do usuário
-        const userTransactions = emergencyTransactions.filter(t => t.usuario_id === userId);
-        
-        return {
-          statusCode: 200,
-          body: JSON.stringify({ transactions: userTransactions })
-        };
-      }
-      
-      // Se não for usuário de emergência, buscar no Supabase
       try {
         // Buscar transações no Supabase
         const { data: transactions, error } = await supabase
@@ -444,26 +405,31 @@ const routes = {
         
         if (error) throw error;
         
-        console.log('[Transactions] Transações obtidas via Supabase');
+        console.log('[Transactions] Transações obtidas do Supabase');
+        
+        // Garantir que o retorno sempre seja um array
+        const transactionsArray = transactions || [];
+        
         return {
           statusCode: 200,
-          body: JSON.stringify({ transactions: transactions || [] })
+          body: JSON.stringify({ transactions: transactionsArray })
         };
-      } catch (supabaseError) {
-        console.error('[Transactions] Erro no Supabase:', supabaseError.message);
+      } catch (error) {
+        console.error('[Transactions] Erro ao buscar transações:', error.message);
+        
+        // Em caso de erro, retornar um array vazio
         return {
-          statusCode: 500,
-          body: JSON.stringify({ 
-            message: 'Erro ao obter transações', 
-            error: supabaseError.message 
-          })
+          statusCode: 200,
+          body: JSON.stringify({ transactions: [] })
         };
       }
     } catch (error) {
       console.error('[Transactions] ERRO:', error.message);
+      
+      // Mesmo em caso de erro, retornar um array vazio
       return {
-        statusCode: 500,
-        body: JSON.stringify({ message: 'Erro interno do servidor', error: error.message })
+        statusCode: 200,
+        body: JSON.stringify({ transactions: [] })
       };
     }
   },
@@ -486,35 +452,6 @@ const routes = {
       
       console.log(`[DeleteTransaction] Tentando excluir transação ${transactionId} para usuário ${userId}`);
       
-      // Verificar se é um usuário de emergência
-      const isEmergencyUser = emergencyUsers.some(u => u.id === userId);
-      if (isEmergencyUser) {
-        // Buscar índice da transação
-        const transactionIndex = emergencyTransactions.findIndex(
-          t => t.id === transactionId && t.usuario_id === userId
-        );
-        
-        if (transactionIndex === -1) {
-          return {
-            statusCode: 404,
-            body: JSON.stringify({ message: 'Transação não encontrada' })
-          };
-        }
-        
-        // Remover a transação
-        emergencyTransactions.splice(transactionIndex, 1);
-        console.log('[DeleteTransaction] Transação excluída do sistema de emergência');
-        
-        return {
-          statusCode: 200,
-          body: JSON.stringify({ 
-            message: 'Transação excluída com sucesso',
-            success: true
-          })
-        };
-      }
-      
-      // Se não for usuário de emergência, usar o Supabase
       try {
         // Excluir no Supabase
         const { data, error } = await supabase
@@ -533,13 +470,13 @@ const routes = {
             success: true
           })
         };
-      } catch (supabaseError) {
-        console.error('[DeleteTransaction] Erro no Supabase:', supabaseError.message);
+      } catch (error) {
+        console.error('[DeleteTransaction] Erro ao excluir transação:', error.message);
         return {
           statusCode: 500,
           body: JSON.stringify({ 
             message: 'Erro ao excluir transação', 
-            error: supabaseError.message 
+            error: error.message 
           })
         };
       }
@@ -589,12 +526,13 @@ const routes = {
         };
       }
       
-      // Verificar se é um usuário de emergência
-      const isEmergencyUser = emergencyUsers.some(u => u.id === userId);
-      if (isEmergencyUser) {
-        // Criar nova transação no sistema de emergência
-        const newTransaction = {
-          id: crypto.randomUUID(),
+      try {
+        // Gerar ID único para a transação
+        const transactionId = crypto.randomUUID();
+        
+        // Preparar dados da transação
+        const transactionData = {
+          id: transactionId,
           usuario_id: userId,
           title: title,
           descricao: title,
@@ -610,62 +548,31 @@ const routes = {
           created_at: new Date().toISOString()
         };
         
-        // Adicionar à lista de transações
-        emergencyTransactions.push(newTransaction);
-        console.log('[AddTransaction] Transação adicionada ao sistema de emergência:', newTransaction.id);
-        
-        return {
-          statusCode: 201,
-          body: JSON.stringify({ 
-            message: 'Transação adicionada com sucesso',
-            transaction: newTransaction
-          })
-        };
-      }
-      
-      // Se não for usuário de emergência, usar o Supabase
-      try {
         // Inserir transação no Supabase
         const { data, error } = await supabase
           .from('transacoes')
-          .insert([
-            {
-              usuario_id: userId,
-              title: title,
-              descricao: title,
-              amount: parseFloat(amount),
-              valor: parseFloat(amount),
-              type: type,
-              tipo: type,
-              category: category,
-              categoria: category,
-              date: date,
-              data: date,
-              content: content || ''
-            }
-          ])
-          .select();
+          .insert([transactionData]);
         
         if (error) {
           console.error('[AddTransaction] Erro ao salvar no Supabase:', error.message);
           throw error;
         }
         
-        console.log('[AddTransaction] Transação salva no Supabase:', data);
+        console.log('[AddTransaction] Transação salva no Supabase:', transactionId);
         return {
           statusCode: 201,
           body: JSON.stringify({ 
             message: 'Transação adicionada com sucesso',
-            transaction: data[0]
+            transaction: transactionData
           })
         };
-      } catch (supabaseError) {
-        console.error('[AddTransaction] Erro no Supabase:', supabaseError.message);
+      } catch (error) {
+        console.error('[AddTransaction] Erro ao adicionar transação:', error.message);
         return {
           statusCode: 500,
           body: JSON.stringify({ 
             message: 'Erro ao adicionar transação', 
-            error: supabaseError.message 
+            error: error.message 
           })
         };
       }
