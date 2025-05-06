@@ -58,159 +58,404 @@ const categoriesModal = document.getElementById('categoriesModal');
 let currentUser = null;
 let userCategories = [];
 
-// Inicialização do app
+// Verificar a presença de elementos na página atual
+function checkElementsPresence() {
+    console.log('Verificando elementos presentes na página...');
+    
+    // Verificar presença dos elementos principais
+    const elements = {
+        loginForm: document.getElementById('login-form'),
+        registerForm: document.getElementById('register-form'),
+        logoutButton: document.getElementById('logoutButton'),
+        userDropdown: document.getElementById('user-dropdown'),
+        authButtons: document.getElementById('auth-buttons'),
+        landingContent: document.getElementById('landing-content'),
+        loggedInView: document.getElementById('logged-in-view'),
+        themeToggle: document.getElementById('theme-toggle')
+    };
+    
+    // Log dos elementos encontrados para debug
+    Object.entries(elements).forEach(([key, element]) => {
+        console.log(`Elemento ${key}: ${element ? 'Encontrado' : 'Não encontrado'}`);
+    });
+    
+    return elements;
+}
+
+// Inicialização do app (melhorada)
 function initApp() {
+    console.log('Inicializando aplicação FinancePRO...');
+    
+    // Verificar elementos presentes na página
+    const elements = checkElementsPresence();
+    
+    // Registrar manipuladores de eventos
     setupEventListeners();
+    
+    // Tentar restaurar usuário do localStorage primeiro (para UI mais rápida)
+    try {
+        const cachedUser = localStorage.getItem('currentUser');
+        const authToken = localStorage.getItem('authToken');
+        
+        if (cachedUser && authToken) {
+            try {
+                currentUser = JSON.parse(cachedUser);
+                console.log('Usuário restaurado do cache:', currentUser.email);
+                
+                // Verificar se o token expirou
+                const tokenExpiration = localStorage.getItem('tokenExpiration');
+                if (tokenExpiration && new Date(tokenExpiration) < new Date()) {
+                    console.warn('Token expirado. Realizando logout automático...');
+                    handleLogout();
+                    return;
+                }
+                
+                // Atualizar UI imediatamente com dados em cache
+                updateUI();
+            } catch (e) {
+                console.error('Erro ao processar dados de usuário em cache:', e);
+                localStorage.removeItem('currentUser');
+                localStorage.removeItem('authToken');
+                localStorage.removeItem('tokenExpiration');
+            }
+        } else {
+            console.log('Nenhum dado de usuário em cache');
+        }
+    } catch (e) {
+        console.warn('Erro ao carregar usuário em cache:', e);
+    }
+    
+    // Verificar autenticação com o servidor
     checkAuthentication();
+    
+    // Inicializar tema
     initTheme();
+    
+    // Verificar se há parâmetros na URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const message = urlParams.get('message');
+    
+    if (message === 'login_required') {
+        showAlert('Por favor, faça login para acessar esta página', 'warning');
+        setTimeout(() => {
+            const loginModal = new bootstrap.Modal(document.getElementById('loginModal'));
+            loginModal.show();
+        }, 1000);
+    } else if (message === 'account_created') {
+        showAlert('Conta criada com sucesso! Por favor, faça login.', 'success');
+        setTimeout(() => {
+            const loginModal = new bootstrap.Modal(document.getElementById('loginModal'));
+            loginModal.show();
+        }, 1000);
+    } else if (message === 'logout_success') {
+        showAlert('Logout realizado com sucesso!', 'success');
+    }
 }
 
 // Configurar listeners de eventos
 function setupEventListeners() {
-    // Eventos de autenticação
+    console.log('Configurando ouvintes de eventos...');
+    
+    // Eventos para formulários
+    const loginForm = document.getElementById('login-form');
     if (loginForm) {
-        loginForm.addEventListener('submit', handleLogin);
-    }
-
-    if (registerForm) {
-        registerForm.addEventListener('submit', handleRegister);
-    }
-
-    // Dropdown do usuário
-    const userMenuButton = document.getElementById('user-menu-button');
-    if (userMenuButton) {
-        userMenuButton.addEventListener('click', (e) => {
-            e.stopPropagation();
-            userDropdown.classList.toggle('open');
+        loginForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            handleLogin();
         });
     }
-
-    // Fechar dropdown ao clicar fora
-    document.addEventListener('click', (e) => {
-        if (userDropdown && !userDropdown.contains(e.target)) {
-            userDropdown.classList.remove('open');
-        }
-    });
-
-    // Botão de logout
-    document.querySelectorAll('.user-dropdown-menu-item.logout').forEach(button => {
-        button.addEventListener('click', handleLogout);
-    });
-
-    // Formulário de nova transação
-    const transactionForm = document.getElementById('transaction-form');
-    if (transactionForm) {
-        transactionForm.addEventListener('submit', handleAddTransaction);
+    
+    const registerForm = document.getElementById('register-form');
+    if (registerForm) {
+        registerForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            handleRegister();
+        });
     }
-
+    
+    // Botão de logout
+    const logoutButton = document.getElementById('logoutButton');
+    if (logoutButton) {
+        logoutButton.addEventListener('click', function(e) {
+            e.preventDefault();
+            handleLogout();
+        });
+    }
+    
+    // Garantir que qualquer elemento com a classe "logout" também tenha o evento de logout
+    document.querySelectorAll('.logout').forEach(el => {
+        el.addEventListener('click', function(e) {
+            e.preventDefault();
+            handleLogout();
+        });
+    });
+    
     // Toggle de tema
+    const themeToggle = document.getElementById('theme-toggle');
     if (themeToggle) {
         themeToggle.addEventListener('click', toggleTheme);
     }
-
-    // Avaliador de força de senha
-    setupPasswordStrength();
-
-    // Filtros de transação
-    if (applyFiltersButton) {
-        applyFiltersButton.addEventListener('click', handleFilterTransactions);
-    }
-
-    // Gerenciamento de categorias
-    if (newCategoryForm) {
-        newCategoryForm.addEventListener('submit', handleAddCategory);
-    }
-
-    // Carregamento das categorias quando o modal é aberto
-    if (categoriesModal) {
-        categoriesModal.addEventListener('show.bs.modal', loadCategories);
-    }
+    
+    // Outros eventos específicos da aplicação
+    // ...
 }
 
-// Verificar autenticação
+// Função para verificar autenticação
 async function checkAuthentication() {
-    const token = localStorage.getItem('authToken');
-    
-    if (token) {
-        try {
-            const response = await fetch(`${API_BASE_URL}/user/me`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                currentUser = data.user;
-                updateUI();
-                loadUserData();
-            } else {
-                // Token inválido
-                localStorage.removeItem('authToken');
-                currentUser = null;
-                updateUI();
-            }
-        } catch (error) {
-            console.error('Erro ao verificar autenticação:', error);
-            localStorage.removeItem('authToken');
-            currentUser = null;
-            updateUI();
-        }
-    } else {
-        // Sem token
-        currentUser = null;
-        updateUI();
-    }
-}
-
-// Login
-async function handleLogin(event) {
-    event.preventDefault();
-    
-    const email = document.getElementById('email').value;
-    const senha = document.getElementById('senha').value;
+    console.log('Verificando autenticação do usuário...');
     
     try {
-        // Ocultar mensagem de erro anterior
-        const loginError = document.getElementById('loginError');
-        loginError.classList.add('d-none');
+        // Verificar se tem token no localStorage
+        const token = localStorage.getItem('authToken');
         
-        const response = await fetch(`${API_BASE_URL}/login`, {
+        if (!token) {
+            console.log('Nenhum token encontrado. Usuário não autenticado.');
+            currentUser = null;
+            updateUI();
+            return false;
+        }
+        
+        // Verificar expiração do token
+        const tokenExpiration = localStorage.getItem('tokenExpiration');
+        if (tokenExpiration && new Date(tokenExpiration) < new Date()) {
+            console.warn('Token expirado! Realizando logout automático.');
+            handleLogout();
+            return false;
+        }
+        
+        console.log('Token encontrado. Verificando com o servidor...');
+        
+        // Fazer requisição à API para validar o token
+        const response = await fetch('/api/validate-token', {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        
+        if (response.ok) {
+            // Token válido
+            const data = await response.json();
+            
+            // Atualizar dados do usuário e token se necessário
+            if (data.user) {
+                localStorage.setItem('currentUser', JSON.stringify(data.user));
+                currentUser = data.user;
+                
+                console.log('Autenticação confirmada. Usuário:', currentUser.email);
+            }
+            
+            // Atualizar interface
+            updateUI();
+            return true;
+        } else {
+            console.warn('Token inválido ou expirado. Status:', response.status);
+            
+            // Token inválido - fazer logout
+            localStorage.removeItem('authToken');
+            localStorage.removeItem('tokenExpiration');
+            localStorage.removeItem('currentUser');
+            currentUser = null;
+            updateUI();
+            
+            // Se está numa página que requer autenticação, redirecionar
+            if (window.location.pathname.includes('/dashboard.html') || 
+                window.location.pathname.includes('/profile.html')) {
+                // Guardar URL atual para redirecionar depois do login
+                localStorage.setItem('redirectAfterLogin', window.location.href);
+                
+                // Redirecionar para a página inicial com mensagem
+                window.location.href = '/?message=login_required';
+            }
+            
+            return false;
+        }
+    } catch (error) {
+        console.error('Erro ao verificar autenticação:', error);
+        
+        // Manter o usuário logado em caso de falha temporária de rede
+        // mas marcar para verificar novamente depois
+        if (currentUser) {
+            console.log('Mantendo usuário logado, mas verificando novamente mais tarde...');
+            setTimeout(checkAuthentication, 60000); // Tentar novamente em 1 minuto
+            return true;
+        }
+        
+        return false;
+    }
+}
+
+// Função para lidar com o processo de login
+async function handleLogin(e) {
+    if (e) e.preventDefault();
+    
+    console.log('Processando login...');
+    
+    // Limpar mensagens de erro anteriores
+    const loginError = document.getElementById('loginError');
+    if (loginError) {
+        loginError.classList.add('d-none');
+    }
+    
+    // Obter elementos do formulário
+    const emailInput = document.getElementById('email');
+    const passwordInput = document.getElementById('senha');
+    const loginButton = document.querySelector('#login-form button[type="submit"]');
+    
+    if (!emailInput || !passwordInput) {
+        console.error('Elementos do formulário não encontrados');
+        showAlert('Erro ao processar formulário', 'danger');
+        return;
+    }
+    
+    const email = emailInput.value.trim();
+    const password = passwordInput.value;
+    
+    // Validação básica no cliente
+    if (!email) {
+        showFieldError(emailInput, 'Por favor, insira seu email');
+        return;
+    }
+    
+    // Validar formato de email com regex
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+        showFieldError(emailInput, 'Email inválido');
+        return;
+    }
+    
+    if (!password) {
+        showFieldError(passwordInput, 'Por favor, insira sua senha');
+        return;
+    }
+    
+    // Mostrar estado de carregamento
+    if (loginButton) {
+        loginButton.disabled = true;
+        loginButton.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Entrando...';
+    }
+    
+    try {
+        // Montar dados da requisição
+        const loginData = {
+            email: email,
+            senha: password
+        };
+        
+        console.log('Enviando requisição de login para a API...');
+        
+        // Fazer requisição para a API
+        const response = await fetch('/api/login', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ email, senha })
+            body: JSON.stringify(loginData)
         });
         
-        const data = await response.json();
+        console.log('Status da resposta:', response.status);
         
-        if (!response.ok) {
-            // Mostrar erro específico
-            document.getElementById('loginErrorMessage').textContent = data.message || 'Erro ao fazer login';
-            loginError.classList.remove('d-none');
-            throw new Error(data.message || 'Erro ao fazer login');
+        // Processar resposta
+        if (response.ok) {
+            try {
+                const data = await response.json();
+                console.log('Login bem-sucedido!');
+                
+                // Salvar token de autenticação
+                localStorage.setItem('authToken', data.token);
+                
+                // Salvar dados do usuário
+                localStorage.setItem('currentUser', JSON.stringify(data.user));
+                
+                // Definir expiração do token (24 horas)
+                const expirationTime = new Date();
+                expirationTime.setHours(expirationTime.getHours() + 24);
+                localStorage.setItem('tokenExpiration', expirationTime.toISOString());
+                
+                // Atualizar variáveis globais
+                currentUser = data.user;
+                authToken = data.token;
+                
+                // Fechar modal de login
+                const loginModal = document.getElementById('loginModal');
+                if (loginModal) {
+                    const bsModal = bootstrap.Modal.getInstance(loginModal);
+                    if (bsModal) bsModal.hide();
+                }
+                
+                // Atualizar interface
+                updateUI();
+                
+                // Mostrar mensagem de boas-vindas
+                showAlert(`Bem-vindo, ${currentUser.name || currentUser.email.split('@')[0]}!`, 'success');
+                
+                // Redirecionar se necessário (se veio de uma página protegida)
+                const redirectTo = localStorage.getItem('redirectAfterLogin');
+                if (redirectTo) {
+                    localStorage.removeItem('redirectAfterLogin');
+                    window.location.href = redirectTo;
+                }
+            } catch (e) {
+                console.error('Erro ao processar resposta JSON:', e);
+                showLoginError('Erro ao processar resposta do servidor');
+            }
+        } else {
+            // Tentar obter mensagem de erro da API
+            try {
+                const errorData = await response.json();
+                showLoginError(errorData.message || 'Erro ao fazer login. Verifique suas credenciais.');
+                console.error('Erro de login:', errorData);
+            } catch (e) {
+                // Se não conseguir processar o JSON de erro
+                showLoginError('Credenciais inválidas ou servidor indisponível');
+                console.error('Erro ao processar resposta de erro:', e);
+            }
         }
-        
-        // Login bem-sucedido
-        localStorage.setItem('authToken', data.token);
-        currentUser = data.user;
-        
-        // Fechar modal
-        const loginModal = bootstrap.Modal.getInstance(document.getElementById('loginModal'));
-        if (loginModal) {
-            loginModal.hide();
-        }
-        
-        // Atualizar interface
-        updateUI();
-        await loadUserData();
-        
-        showAlert(`Bem-vindo, ${currentUser.nome}!`, 'success');
     } catch (error) {
-        console.error("Erro de login:", error);
-        showAlert(`Erro: ${error.message}`, 'danger');
+        console.error('Erro ao fazer login:', error);
+        showLoginError('Erro de conexão. Verifique sua internet e tente novamente.');
+    } finally {
+        // Restaurar botão de login
+        if (loginButton) {
+            loginButton.disabled = false;
+            loginButton.innerHTML = '<i class="fas fa-sign-in-alt me-2"></i>Entrar';
+        }
     }
+}
+
+// Função para mostrar erro no login
+function showLoginError(message) {
+    const loginError = document.getElementById('loginError');
+    const loginErrorMessage = document.getElementById('loginErrorMessage');
+    
+    if (loginError && loginErrorMessage) {
+        loginErrorMessage.textContent = message;
+        loginError.classList.remove('d-none');
+    } else {
+        showAlert(message, 'danger');
+    }
+}
+
+// Função para mostrar erro em um campo específico
+function showFieldError(inputElement, message) {
+    // Adicionar classe de erro ao input
+    inputElement.classList.add('is-invalid');
+    
+    // Verificar se já existe ou criar um elemento de feedback
+    let feedbackElement = inputElement.nextElementSibling;
+    if (!feedbackElement || !feedbackElement.classList.contains('invalid-feedback')) {
+        feedbackElement = document.createElement('div');
+        feedbackElement.classList.add('invalid-feedback');
+        inputElement.parentNode.insertBefore(feedbackElement, inputElement.nextSibling);
+    }
+    
+    // Definir a mensagem de erro
+    feedbackElement.textContent = message;
+    
+    // Adicionar evento para remover o erro quando o usuário começar a digitar
+    inputElement.addEventListener('input', function() {
+        this.classList.remove('is-invalid');
+    }, { once: true });
 }
 
 // Registro
@@ -271,12 +516,26 @@ async function handleRegister(event) {
     }
 }
 
-// Logout
+// Função para lidar com o logout
 function handleLogout() {
+    console.log('Realizando logout...');
+    
+    // Limpar o token de autenticação e dados do usuário
     localStorage.removeItem('authToken');
+    localStorage.removeItem('tokenExpires');
+    localStorage.removeItem('currentUser');
+    
+    // Redefinir variáveis globais
     currentUser = null;
+    
+    // Atualizar a interface
     updateUI();
-    showAlert('Você saiu da sua conta', 'info');
+    
+    // Exibir mensagem de sucesso
+    showAlert('Logout realizado com sucesso!', 'success');
+    
+    // Redirecionar para a página inicial com mensagem de sucesso
+    window.location.href = '/?message=logout_success';
 }
 
 // Adicionar transação
@@ -853,30 +1112,47 @@ function updateFinanceSummary(summary) {
 
 // Atualizar interface com base no estado de autenticação
 function updateUI() {
+    console.log('Atualizando interface com base na autenticação...');
+    
+    const loggedOutElements = document.querySelectorAll('.logged-out-only');
+    const loggedInElements = document.querySelectorAll('.logged-in-only');
+    const userNameElements = document.querySelectorAll('.user-name');
+    const userEmailElements = document.querySelectorAll('.user-email');
+    
     if (currentUser) {
-        // Usuário logado
-        if (mainContainer) mainContainer.style.display = 'none';
-        if (loggedInView) loggedInView.style.display = 'block';
-        if (authButtons) authButtons.style.display = 'none';
-        if (userDropdown) userDropdown.style.display = 'block';
+        console.log('Usuário autenticado:', currentUser.email);
         
-        // Atualizar nome do usuário
-        if (userNameElement) userNameElement.textContent = currentUser.nome;
+        // Mostrar elementos para usuários logados
+        loggedInElements.forEach(el => el.style.display = 'block');
         
-        // Atualizar outros elementos com info do usuário
-        document.querySelectorAll('.user-name-display').forEach(el => {
-            el.textContent = currentUser.nome;
+        // Esconder elementos para usuários deslogados
+        loggedOutElements.forEach(el => el.style.display = 'none');
+        
+        // Atualizar informações do usuário na interface
+        userNameElements.forEach(el => {
+            el.textContent = currentUser.name || currentUser.email.split('@')[0] || 'Usuário';
         });
         
-        document.querySelectorAll('.user-email-display').forEach(el => {
-            el.textContent = currentUser.email;
+        userEmailElements.forEach(el => {
+            el.textContent = currentUser.email || '';
         });
+        
+        // Verificar se estamos na página de dashboard e carregá-la
+        if (window.location.pathname.includes('/dashboard.html')) {
+            loadDashboardData();
+        }
     } else {
-        // Usuário não logado
-        if (mainContainer) mainContainer.style.display = 'block';
-        if (loggedInView) loggedInView.style.display = 'none';
-        if (authButtons) authButtons.style.display = 'flex';
-        if (userDropdown) userDropdown.style.display = 'none';
+        console.log('Nenhum usuário autenticado');
+        
+        // Esconder elementos para usuários logados
+        loggedInElements.forEach(el => el.style.display = 'none');
+        
+        // Mostrar elementos para usuários deslogados
+        loggedOutElements.forEach(el => el.style.display = 'block');
+        
+        // Limpar informações do usuário na interface
+        userNameElements.forEach(el => el.textContent = '');
+        userEmailElements.forEach(el => el.textContent = '');
     }
 }
 

@@ -44,9 +44,9 @@ const BACKUP_USER = {
 
 // Rotas da API
 const routes = {
-  // Rota de login - Simplificada
+  // Rota de login - Aprimorada e mais robusta
   'POST /login': async (event) => {
-    console.log('[Login] Iniciando processamento de login simplificado...');
+    console.log('[Login] Iniciando processamento de login...');
     
     try {
       // Processar corpo da requisição
@@ -72,17 +72,57 @@ const routes = {
         };
       }
 
-      // Verificar usuário backup para desenvolvimento
-      if (email === BACKUP_USER.email) {
-        console.log('[Login] Tentando login com usuário backup...');
-        const senhaCorreta = await bcrypt.compare(senha, BACKUP_USER.senha_hash);
+      try {
+        // Tentativa 1: Autenticação via Supabase Auth
+        console.log('[Login] Tentando autenticar via Supabase Auth...');
+        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+          email: email,
+          password: senha
+        });
         
-        if (senhaCorreta) {
-          console.log('[Login] Login bem-sucedido com usuário backup');
+        // Se autenticação via Auth for bem-sucedida
+        if (!authError && authData && authData.user) {
+          console.log('[Login] Autenticação via Supabase Auth bem-sucedida!');
+          
+          // Buscar dados do perfil
+          let { data: profileData, error: profileError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', authData.user.id)
+            .single();
+          
+          // Se não encontrar o perfil, cria automaticamente
+          if (profileError || !profileData) {
+            console.log('[Login] Perfil não encontrado, criando novo perfil...');
+            
+            const newProfile = {
+              id: authData.user.id,
+              nome: authData.user.user_metadata?.nome || "Usuário",
+              email: authData.user.email,
+              created_at: new Date().toISOString()
+            };
+            
+            const { error: insertError } = await supabase
+              .from('profiles')
+              .insert([newProfile]);
+              
+            if (!insertError) {
+              profileData = newProfile;
+              console.log('[Login] Perfil criado com sucesso');
+            } else {
+              console.error('[Login] Erro ao criar perfil:', insertError.message);
+            }
+          }
+          
+          const userData = profileData || { 
+            id: authData.user.id, 
+            nome: authData.user.user_metadata?.nome || "Usuário", 
+            email: authData.user.email 
+          };
           
           // Gerar token JWT
           const token = jwt.sign(
-            { id: BACKUP_USER.id, email: BACKUP_USER.email },
+            { id: userData.id, email: userData.email },
             JWT_SECRET,
             { expiresIn: '7d' }
           );
@@ -92,81 +132,53 @@ const routes = {
             body: JSON.stringify({
               message: 'Login realizado com sucesso',
               token,
-              user: { 
-                id: BACKUP_USER.id, 
-                nome: BACKUP_USER.nome, 
-                email: BACKUP_USER.email 
-              }
+              user: { id: userData.id, nome: userData.nome, email: userData.email }
             })
           };
-        }
-      }
-
-      try {
-        // Primeiro tenta autenticar via Supabase Auth (método mais seguro)
-        console.log('[Login] Tentando autenticar via Supabase Auth...');
-        try {
-          const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-            email: email,
-            password: senha
-          });
-          
-          if (!authError && authData && authData.user) {
-            console.log('[Login] Autenticação via Supabase Auth bem-sucedida!');
-            
-            // Buscar dados do perfil
-            const { data: profileData } = await supabase
-              .from('profiles')
-              .select('*')
-              .eq('id', authData.user.id)
-              .single();
-            
-            const userData = profileData || { 
-              id: authData.user.id, 
-              nome: authData.user.user_metadata?.nome || "Usuário", 
-              email: authData.user.email 
-            };
-            
-            // Gerar token JWT
-            const token = jwt.sign(
-              { id: userData.id, email: userData.email },
-              JWT_SECRET,
-              { expiresIn: '7d' }
-            );
-            
-            return {
-              statusCode: 200,
-              body: JSON.stringify({
-                message: 'Login realizado com sucesso',
-                token,
-                user: { id: userData.id, nome: userData.nome, email: userData.email }
-              })
-            };
-          } else {
-            console.log('[Login] Autenticação via Auth falhou, tentando tabela profiles...');
-          }
-        } catch (authErr) {
-          console.error('[Login] Erro ao tentar autenticação via Auth:', authErr.message);
+        } else if (authError) {
+          console.log('[Login] Erro Auth:', authError.message);
         }
         
-        // Se a autenticação via Auth falhar, tenta pela tabela profiles
-        console.log('[Login] Buscando usuário na tabela profiles...');
+        // Tentativa 2: Se falhar Auth, tenta pela tabela profiles
+        console.log('[Login] Tentando autenticar pela tabela profiles...');
         const { data: users, error } = await supabase
           .from('profiles')
           .select('*')
           .eq('email', email)
           .limit(1);
         
-        console.log('[Login] Resultado da busca na tabela profiles:', users);
-        
         if (error) {
           console.error('[Login] Erro ao buscar usuário na tabela profiles:', error.message);
-          throw error;
+          throw new Error('Erro ao acessar banco de dados');
         }
         
         const user = users && users.length > 0 ? users[0] : null;
         
         if (!user) {
+          // Tentativa 3: Conta de emergência (para desenvolvimento)
+          if (email === BACKUP_USER.email) {
+            console.log('[Login] Email corresponde ao usuário de backup, verificando senha...');
+            const senhaCorreta = await bcrypt.compare(senha, BACKUP_USER.senha_hash);
+            
+            if (senhaCorreta) {
+              console.log('[Login] Login de emergência bem-sucedido');
+              const token = jwt.sign(
+                { id: BACKUP_USER.id, email: BACKUP_USER.email },
+                JWT_SECRET,
+                { expiresIn: '7d' }
+              );
+              
+              return {
+                statusCode: 200,
+                body: JSON.stringify({
+                  message: 'Login de emergência realizado com sucesso',
+                  token,
+                  user: { id: BACKUP_USER.id, nome: BACKUP_USER.nome, email: BACKUP_USER.email }
+                })
+              };
+            }
+          }
+          
           console.error('[Login] Usuário não encontrado para o email:', email);
           return {
             statusCode: 401,
@@ -175,16 +187,42 @@ const routes = {
         }
         
         // Verificar senha
+        // Se o usuário não tiver hash de senha (caso conta criada via Auth)
         if (!user.senha_hash) {
-          console.error('[Login] Usuário não possui hash de senha:', email);
+          console.log('[Login] Usuário sem hash de senha, tentando gerar hash...');
+          
+          // Tenta atualizar a senha hash para futuros logins
+          const hashedPassword = await bcrypt.hash(senha, 10);
+          
+          const { error: updateError } = await supabase
+            .from('profiles')
+            .update({ senha_hash: hashedPassword })
+            .eq('id', user.id);
+            
+          if (updateError) {
+            console.log('[Login] Aviso: Não foi possível atualizar hash de senha:', updateError.message);
+          }
+          
+          // Assume que é a primeira vez fazendo login e permite acesso
+          const token = jwt.sign(
+            { id: user.id, email: user.email },
+            JWT_SECRET,
+            { expiresIn: '7d' }
+          );
+          
+          console.log('[Login] Login por primeiro acesso para:', email);
           return {
-            statusCode: 401,
-            body: JSON.stringify({ message: 'Método de autenticação não suportado para este usuário' })
+            statusCode: 200,
+            body: JSON.stringify({
+              message: 'Login realizado com sucesso',
+              token,
+              user: { id: user.id, nome: user.nome, email: user.email }
+            })
           };
         }
         
+        // Verificação normal de senha hash
         const senhaCorreta = await bcrypt.compare(senha, user.senha_hash);
-        console.log('[Login] Resultado da verificação de senha:', senhaCorreta);
         
         if (!senhaCorreta) {
           console.error('[Login] Senha incorreta para o email:', email);
@@ -257,9 +295,41 @@ const routes = {
         };
       }
 
-      // ------------------- MÉTODO SIMPLIFICADO DE REGISTRO -------------------
-      // Primeiro verificar se o email já existe em profiles (independente do Auth)
-      console.log('[Register] Verificando se o email já está em uso...');
+      // Primeiro criar no Auth do Supabase (método preferido)
+      console.log('[Register] Tentando criar usuário no Supabase Auth...');
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: email,
+        password: senha,
+        options: {
+          data: {
+            nome: nome
+          }
+        }
+      });
+      
+      let userId;
+      
+      if (!authError && authData && authData.user) {
+        // Auth criado com sucesso
+        userId = authData.user.id;
+        console.log('[Register] Usuário criado com sucesso no Auth com ID:', userId);
+      } else {
+        // Verificar se o erro é porque o email já existe
+        if (authError && authError.message.includes('already')) {
+          console.log('[Register] Email já registrado no Auth:', email);
+          return {
+            statusCode: 400,
+            body: JSON.stringify({ message: 'Este email já está em uso' })
+          };
+        }
+        
+        // Se falhar por outro motivo, gerar um UUID para usar
+        userId = crypto.randomUUID();
+        console.log('[Register] Falha ao criar no Auth, usando UUID gerado:', userId);
+      }
+      
+      // Verificar se o email já existe em profiles (verificação adicional)
+      console.log('[Register] Verificando se o email já está em uso na tabela profiles...');
       const { data: existingProfiles, error: checkError } = await supabase
         .from('profiles')
         .select('*')
@@ -278,7 +348,7 @@ const routes = {
       }
       
       if (existingProfiles && existingProfiles.length > 0) {
-        console.log('[Register] Email já em uso:', email);
+        console.log('[Register] Email já em uso na tabela profiles:', email);
         return {
           statusCode: 400,
           body: JSON.stringify({ message: 'Este email já está em uso' })
@@ -289,10 +359,6 @@ const routes = {
       
       // Criptografar senha
       const hashedPassword = await bcrypt.hash(senha, 10);
-      
-      // Gerar ID único para o usuário
-      const userId = crypto.randomUUID();
-      console.log(`[Register] ID gerado para o novo usuário: ${userId}`);
       
       // Criar objeto do usuário
       const userData = {
@@ -334,29 +400,6 @@ const routes = {
       }
       
       console.log('[Register] Usuário inserido com sucesso!');
-      
-      // Como método de backup, tentar criar também no Auth do Supabase
-      // Isso não bloqueia o registro se falhar, apenas é uma tentativa adicional
-      try {
-        console.log('[Register] Tentando também criar usuário no Supabase Auth...');
-        const { error: authError } = await supabase.auth.signUp({
-          email: email,
-          password: senha,
-          options: {
-            data: {
-              nome: nome
-            }
-          }
-        });
-        
-        if (authError) {
-          console.log('[Register] Aviso: Não foi possível criar no Auth, mas o usuário foi registrado na tabela profiles:', authError.message);
-        } else {
-          console.log('[Register] Usuário criado com sucesso também no Auth!');
-        }
-      } catch (authErr) {
-        console.log('[Register] Aviso: Erro ao tentar criar no Auth, mas o usuário foi registrado na tabela profiles:', authErr.message);
-      }
       
       // Gerar token JWT
       const token = jwt.sign(
@@ -403,18 +446,42 @@ const routes = {
       const userId = authResult.user.id;
       
       try {
+        // Primeira tentativa: buscar na tabela profiles
         const { data: user, error } = await supabase
           .from('profiles')
           .select('id, nome, email, created_at')
           .eq('id', userId)
           .single();
         
-        if (error) throw error;
+        if (error) {
+          console.error('[UserMe] Erro ao buscar perfil:', error.message);
+          throw error;
+        }
         
         if (!user) {
+          // Segunda tentativa: verificar se existe no Auth
+          const { data: authUser, error: authError } = await supabase.auth.admin.getUserById(userId);
+          
+          if (authError || !authUser) {
+            console.log('[UserMe] Usuário não encontrado no Auth também');
+            return {
+              statusCode: 404,
+              body: JSON.stringify({ message: 'Usuário não encontrado' })
+            };
+          }
+          
+          // Criar um perfil baseado nos dados do Auth
+          const userData = {
+            id: authUser.user.id,
+            nome: authUser.user.user_metadata?.nome || "Usuário",
+            email: authUser.user.email,
+            created_at: authUser.user.created_at
+          };
+          
+          console.log('[UserMe] Retornando dados do Auth já que perfil não existe');
           return {
-            statusCode: 404,
-            body: JSON.stringify({ message: 'Usuário não encontrado' })
+            statusCode: 200,
+            body: JSON.stringify({ user: userData })
           };
         }
         
@@ -425,6 +492,23 @@ const routes = {
         };
       } catch (error) {
         console.error('[UserMe] Erro ao buscar usuário:', error.message);
+        
+        // Verificar se é uma situação de backup
+        if (authResult.user.id === BACKUP_USER.id) {
+          console.log('[UserMe] Retornando usuário de backup');
+          return {
+            statusCode: 200,
+            body: JSON.stringify({ 
+              user: { 
+                id: BACKUP_USER.id, 
+                nome: BACKUP_USER.nome, 
+                email: BACKUP_USER.email,
+                created_at: new Date().toISOString()
+              } 
+            })
+          };
+        }
+        
         return {
           statusCode: 500,
           body: JSON.stringify({ 
@@ -652,62 +736,59 @@ const routes = {
   }
 };
 
-// Handler principal da função Netlify
+// Função principal para processar as requisições
 exports.handler = async (event, context) => {
-  // Configurar para não esperar por event loop vazio
-  context.callbackWaitsForEmptyEventLoop = false;
-  
-  console.log(`[API] Requisição: ${event.httpMethod} ${event.path}`);
-  
-  // Construir identificador de rota
-  const path = event.path.replace('/.netlify/functions/api', '');
-  const routeKey = `${event.httpMethod} ${path}`;
-  console.log(`[API] Rota identificada: ${routeKey}`);
+  console.log(`Recebido: ${event.httpMethod} ${event.path}`);
   
   // Adicionar cabeçalhos CORS
   const headers = {
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type,Authorization',
-    'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
     'Content-Type': 'application/json'
   };
   
-  // Responder a solicitações OPTIONS (CORS preflight)
+  // Verificar se é uma requisição OPTIONS (preflight)
   if (event.httpMethod === 'OPTIONS') {
     return {
       statusCode: 204,
-      headers
+      headers,
+      body: ''
     };
   }
   
-  // Verificar se a rota existe
-  const route = routes[routeKey];
-  if (route) {
-    try {
-      // Executar função da rota
+  try {
+    // Construir a chave da rota
+    const routeKey = `${event.httpMethod} ${event.path.replace('/.netlify/functions/api', '')}`;
+    console.log(`Procurando rota: "${routeKey}"`);
+    
+    // Verificar se a rota existe
+    const route = routes[routeKey];
+    
+    if (route) {
+      console.log(`Rota encontrada: ${routeKey}`);
       const response = await route(event);
+      
       // Adicionar cabeçalhos CORS à resposta
       return {
         ...response,
         headers: { ...headers, ...response.headers }
       };
-    } catch (error) {
-      console.error(`[API] ERRO:`, error.message);
-      return {
-        statusCode: 500,
-        headers,
-        body: JSON.stringify({
-          message: 'Erro interno do servidor',
-          error: error.message
-        })
-      };
     }
+    
+    // Rota não encontrada
+    console.log(`Rota não encontrada: ${routeKey}`);
+    return {
+      statusCode: 404,
+      headers,
+      body: JSON.stringify({ message: 'Endpoint não encontrado' })
+    };
+  } catch (error) {
+    console.error(`ERRO FATAL: ${error.message}`);
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ message: 'Erro interno do servidor', error: error.message })
+    };
   }
-  
-  // Rota não encontrada
-  return {
-    statusCode: 404,
-    headers,
-    body: JSON.stringify({ message: 'Rota não encontrada' })
-  };
 }; 

@@ -25,12 +25,12 @@
             </a>
             <div class="ms-auto">
                 <!-- Dropdown do usuário (inicialmente oculto) -->
-                <div id="user-dropdown" class="user-dropdown" style="display:none;">
+                <div id="user-dropdown" class="user-dropdown logged-in-only" style="display:none;">
                     <button class="user-dropdown-button" id="user-menu-button">
                         <div class="user-avatar">
                             <i class="fas fa-user"></i>
                         </div>
-                        <span>Olá, <span id="username-display">Usuário</span></span>
+                        <span>Olá, <span id="username-display" class="user-name">Usuário</span></span>
                         <i class="fas fa-chevron-down ms-2"></i>
                     </button>
                     <div class="user-dropdown-menu">
@@ -51,7 +51,7 @@
                             <span>Histórico de Login</span>
                         </a>
                         <div class="user-dropdown-menu-divider"></div>
-                        <a href="#" class="user-dropdown-menu-item logout">
+                        <a href="#" class="user-dropdown-menu-item logout" id="logoutButton">
                             <i class="fas fa-sign-out-alt"></i>
                             <span>Sair</span>
                         </a>
@@ -59,7 +59,7 @@
                 </div>
                 
                 <!-- Botões de login/cadastro (visíveis antes do login) -->
-                <div id="auth-buttons">
+                <div id="auth-buttons" class="logged-out-only">
                     <button class="btn btn-primary btn-glow me-2" data-bs-toggle="modal" data-bs-target="#loginModal">
                         <i class="fas fa-sign-in-alt me-1"></i> Entrar
                     </button>
@@ -74,7 +74,7 @@
     <!-- Conteúdo principal -->
     <div class="container main-container">
         <!-- Seção de apresentação -->
-        <div id="landing-content">
+        <div id="landing-content" class="logged-out-only">
             <div class="row align-items-center hero-section">
                 <div class="col-lg-8 mx-auto text-center">
                     <h1 class="display-4 fw-bold">Controle financeiro com <span class="text-gradient">inteligência</span></h1>
@@ -127,7 +127,7 @@
     </div>
 
     <!-- Seção após login (inicialmente oculta) -->
-    <div id="logged-in-view" style="display:none;">
+    <div id="logged-in-view" class="logged-in-only" style="display:none;">
         <div class="container">
             <!-- Resumo financeiro -->
             <div class="row mb-4">

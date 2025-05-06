@@ -68,41 +68,102 @@ function showAlert(message, type = 'error') {
 
 // Função para verificar se o usuário está logado
 function checkAuthentication() {
-    if (!authToken) {
-        window.location.href = 'index.html?redirect=profile&message=login_required';
+    console.log('Verificando autenticação na página de perfil...');
+    
+    // Verificar se tem token no localStorage
+    const token = localStorage.getItem('authToken');
+    
+    if (!token) {
+        console.log('Nenhum token encontrado. Redirecionando para login...');
+        // Salvar a página atual para redirecionamento após login
+        localStorage.setItem('redirectAfterLogin', window.location.href);
+        window.location.href = 'index.html?message=login_required';
         return false;
     }
+    
+    // Verificar expiração do token
+    const tokenExpiration = localStorage.getItem('tokenExpiration');
+    if (tokenExpiration && new Date(tokenExpiration) < new Date()) {
+        console.warn('Token expirado! Redirecionando para login...');
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('tokenExpiration');
+        localStorage.removeItem('currentUser');
+        
+        // Salvar a página atual para redirecionamento após login
+        localStorage.setItem('redirectAfterLogin', window.location.href);
+        window.location.href = 'index.html?message=session_expired';
+        return false;
+    }
+    
     return true;
 }
 
 // Carregar dados do usuário
 async function loadUserProfile() {
-    if (!checkAuthentication()) return;
+    console.log('Carregando perfil do usuário...');
+    
+    if (!checkAuthentication()) {
+        console.warn('Tentativa de carregar perfil sem autenticação');
+        return;
+    }
     
     try {
-        const response = await fetch(`${API_URL}/user/me`, {
+        const token = getToken();
+        
+        const response = await fetch('/api/user/profile', {
             method: 'GET',
             headers: {
-                'Authorization': `Bearer ${authToken}`,
+                'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
             }
         });
         
         if (!response.ok) {
+            if (response.status === 401) {
+                console.warn('Token inválido ou expirado ao carregar perfil');
+                // Redirecionar para login se token estiver inválido
+                localStorage.removeItem('authToken');
+                localStorage.removeItem('tokenExpiration');
+                localStorage.removeItem('currentUser');
+                window.location.href = 'index.html?message=session_expired';
+                return;
+            }
             throw new Error('Falha ao carregar perfil');
         }
         
         const data = await response.json();
-        const user = data.user;
+        console.log('Dados do perfil carregados com sucesso');
         
         // Preencher dados do perfil
-        userNameElement.textContent = user.nome;
-        userEmailElement.textContent = user.email;
-        nameInput.value = user.nome;
-        emailInput.value = user.email;
+        const user = data.user || {};
+        
+        // Atualizar nome de usuário
+        const userNameElements = document.querySelectorAll('.user-name, #userName');
+        userNameElements.forEach(el => {
+            if (el) el.textContent = user.name || user.nome || user.email?.split('@')[0] || 'Usuário';
+        });
+        
+        // Atualizar email
+        const userEmailElements = document.querySelectorAll('.user-email, #userEmail');
+        userEmailElements.forEach(el => {
+            if (el) el.textContent = user.email || '';
+        });
+        
+        // Preencher campos do formulário se existirem
+        const nameInput = document.getElementById('name');
+        if (nameInput) nameInput.value = user.name || user.nome || '';
+        
+        const emailInput = document.getElementById('email');
+        if (emailInput) emailInput.value = user.email || '';
+        
+        // Salvar os dados do usuário no localStorage (cache)
+        localStorage.setItem('currentUser', JSON.stringify(user));
+        
+        return user;
     } catch (error) {
         console.error('Erro ao carregar perfil:', error);
-        showAlert('Não foi possível carregar seus dados. Por favor, tente novamente.');
+        showAlert('Não foi possível carregar seus dados de perfil. Por favor, tente novamente.', 'error');
+        return null;
     }
 }
 
@@ -347,35 +408,44 @@ async function connect99() {
 
 // Desconectar do Uber
 async function disconnectUber() {
-    if (!checkAuthentication()) return;
-    
-    if (!confirm('Tem certeza que deseja desconectar sua conta do Uber? Isso interromperá a importação automática de transações.')) {
+    if (!confirm('Tem certeza que deseja desconectar sua conta do Uber? Você precisará autorizar novamente para reimportar seus dados.')) {
         return;
     }
     
     try {
-        const response = await fetch(`${API_URL}/integrations/uber`, {
+        const token = getToken();
+        if (!token) {
+            console.warn('Tentativa de desconectar Uber sem token');
+            showAlert('Sessão expirada. Por favor, faça login novamente.', 'error');
+            return;
+        }
+        
+        const response = await fetch('/api/integrations/uber', {
             method: 'DELETE',
             headers: {
-                'Authorization': `Bearer ${authToken}`,
+                'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
             }
         });
         
         if (!response.ok) {
-            throw new Error('Falha ao desconectar');
+            throw new Error('Falha ao desconectar conta do Uber');
         }
         
-        // Atualizar UI
-        uberStatusElement.textContent = 'Não conectado';
-        uberStatusElement.className = 'status-disconnected';
-        connectUberBtn.style.display = 'block';
-        disconnectUberBtn.style.display = 'none';
+        showAlert('Conta do Uber desconectada com sucesso', 'success');
         
-        showAlert('Desconectado com sucesso do Uber', 'success');
+        // Atualizar interface
+        document.getElementById('uber-status').textContent = 'Não conectado';
+        document.getElementById('uber-status').classList.remove('connected');
+        document.getElementById('connectUberBtn').style.display = 'block';
+        document.getElementById('disconnectUberBtn').style.display = 'none';
+        
+        // Remover botão de sincronização
+        const syncBtn = document.getElementById('syncUberBtn');
+        if (syncBtn) syncBtn.remove();
     } catch (error) {
-        console.error('Erro ao desconectar do Uber:', error);
-        showAlert('Não foi possível desconectar do Uber. Por favor, tente novamente.');
+        console.error('Erro ao desconectar Uber:', error);
+        showAlert('Erro ao desconectar conta. Tente novamente.', 'error');
     }
 }
 
@@ -512,10 +582,16 @@ function setupIntegrations() {
 
 async function checkIntegrationStatus() {
     try {
+        const token = getToken();
+        if (!token) {
+            console.warn('Tentativa de verificar status de integrações sem token');
+            return;
+        }
+        
         const response = await fetch('/api/user/integrations', {
             method: 'GET',
             headers: {
-                'Authorization': `Bearer ${getToken()}`,
+                'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
             }
         });
@@ -564,6 +640,13 @@ async function checkIntegrationStatus() {
 
 async function syncUberTrips() {
     try {
+        const token = getToken();
+        if (!token) {
+            console.warn('Tentativa de sincronizar viagens sem token');
+            showAlert('Sessão expirada. Por favor, faça login novamente.', 'error');
+            return;
+        }
+        
         const syncBtn = document.getElementById('syncUberBtn');
         syncBtn.disabled = true;
         syncBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sincronizando...';
@@ -571,7 +654,7 @@ async function syncUberTrips() {
         const response = await fetch('/api/integrations/uber/sync', {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${getToken()}`,
+                'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
             }
         });
@@ -588,43 +671,10 @@ async function syncUberTrips() {
         showAlert('Erro ao sincronizar viagens. Tente novamente.', 'error');
     } finally {
         const syncBtn = document.getElementById('syncUberBtn');
-        syncBtn.disabled = false;
-        syncBtn.innerHTML = '<i class="fas fa-sync"></i> Sincronizar';
-    }
-}
-
-async function disconnectUber() {
-    if (!confirm('Tem certeza que deseja desconectar sua conta do Uber? Você precisará autorizar novamente para reimportar seus dados.')) {
-        return;
-    }
-    
-    try {
-        const response = await fetch('/api/integrations/uber', {
-            method: 'DELETE',
-            headers: {
-                'Authorization': `Bearer ${getToken()}`,
-                'Content-Type': 'application/json'
-            }
-        });
-        
-        if (!response.ok) {
-            throw new Error('Falha ao desconectar conta do Uber');
+        if (syncBtn) {
+            syncBtn.disabled = false;
+            syncBtn.innerHTML = '<i class="fas fa-sync"></i> Sincronizar';
         }
-        
-        showAlert('Conta do Uber desconectada com sucesso', 'success');
-        
-        // Atualizar interface
-        document.getElementById('uber-status').textContent = 'Não conectado';
-        document.getElementById('uber-status').classList.remove('connected');
-        document.getElementById('connectUberBtn').style.display = 'block';
-        document.getElementById('disconnectUberBtn').style.display = 'none';
-        
-        // Remover botão de sincronização
-        const syncBtn = document.getElementById('syncUberBtn');
-        if (syncBtn) syncBtn.remove();
-    } catch (error) {
-        console.error('Erro ao desconectar Uber:', error);
-        showAlert('Erro ao desconectar conta. Tente novamente.', 'error');
     }
 }
 
@@ -729,12 +779,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Função para obter o token de autenticação
 function getToken() {
-    return localStorage.getItem('token');
+    return localStorage.getItem('authToken');
 }
 
 // Função para verificar se o usuário está autenticado
 function isAuthenticated() {
-    return !!getToken();
+    const token = getToken();
+    const tokenExpiration = localStorage.getItem('tokenExpiration');
+    
+    if (!token) {
+        return false;
+    }
+    
+    // Verificar se o token expirou
+    if (tokenExpiration && new Date(tokenExpiration) < new Date()) {
+        console.warn('Token expirado durante verificação de autenticação');
+        return false;
+    }
+    
+    return true;
 }
 
 // Configurar tabs da página
@@ -760,11 +823,22 @@ function setupTabs() {
 
 // Configurar função de logout
 function setupLogout() {
+    console.log('Configurando evento de logout...');
+    
     document.getElementById('logoutBtn').addEventListener('click', (e) => {
         e.preventDefault();
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        window.location.href = 'index.html';
+        console.log('Realizando logout...');
+        
+        // Limpar todos os dados de autenticação
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('tokenExpiration');
+        localStorage.removeItem('currentUser');
+        
+        // Exibir mensagem de sucesso
+        showAlert('Logout realizado com sucesso!', 'success');
+        
+        // Redirecionar para a página inicial com mensagem de sucesso
+        window.location.href = 'index.html?message=logout_success';
     });
 }
 
