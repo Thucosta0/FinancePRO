@@ -35,3 +35,6 @@ test-*.js
 *-test.js
 teste-*.html
 *.test.js
+
+# Local Netlify folder
+.netlify
