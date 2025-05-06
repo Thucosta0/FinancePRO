@@ -408,44 +408,47 @@ async function connect99() {
 
 // Desconectar do Uber
 async function disconnectUber() {
-    if (!confirm('Tem certeza que deseja desconectar sua conta do Uber? Você precisará autorizar novamente para reimportar seus dados.')) {
-        return;
-    }
-    
+    console.log('Desconectando Uber...');
     try {
+        // Desabilitar botão durante processo
+        const disconnectBtn = document.getElementById('disconnectUberBtn');
+        if (disconnectBtn) {
+            disconnectBtn.disabled = true;
+            disconnectBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Desconectando...';
+        }
+        
         const token = getToken();
         if (!token) {
-            console.warn('Tentativa de desconectar Uber sem token');
-            showAlert('Sessão expirada. Por favor, faça login novamente.', 'error');
-            return;
+            throw new Error('Sessão expirada. Faça login novamente.');
         }
         
         const response = await fetch('/api/integrations/uber', {
             method: 'DELETE',
             headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
+                'Authorization': `Bearer ${token}`
             }
         });
         
         if (!response.ok) {
-            throw new Error('Falha ao desconectar conta do Uber');
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.message || 'Erro ao desconectar do Uber');
         }
         
-        showAlert('Conta do Uber desconectada com sucesso', 'success');
+        // Atualizar status e mostrar mensagem
+        showAlert('Desconectado do Uber com sucesso!', 'success');
         
-        // Atualizar interface
-        document.getElementById('uber-status').textContent = 'Não conectado';
-        document.getElementById('uber-status').classList.remove('connected');
-        document.getElementById('connectUberBtn').style.display = 'block';
-        document.getElementById('disconnectUberBtn').style.display = 'none';
-        
-        // Remover botão de sincronização
-        const syncBtn = document.getElementById('syncUberBtn');
-        if (syncBtn) syncBtn.remove();
+        // Atualizar UI
+        checkIntegrationStatus();
     } catch (error) {
         console.error('Erro ao desconectar Uber:', error);
-        showAlert('Erro ao desconectar conta. Tente novamente.', 'error');
+        showAlert(`Erro: ${error.message}`, 'error');
+    } finally {
+        // Restaurar botão
+        const disconnectBtn = document.getElementById('disconnectUberBtn');
+        if (disconnectBtn) {
+            disconnectBtn.disabled = false;
+            disconnectBtn.innerHTML = '<i class="fas fa-plug-circle-xmark me-1"></i> Desconectar';
+        }
     }
 }
 
@@ -562,157 +565,206 @@ document.addEventListener('DOMContentLoaded', init);
 
 // Funções de Integração
 function setupIntegrations() {
+    console.log('Configurando integrações...');
+    
     // Buscar status das integrações
     checkIntegrationStatus();
     
     // Configurar botões de integração
-    document.getElementById('connectUberBtn').addEventListener('click', () => {
-        window.location.href = '/api/integrations/uber/auth';
-    });
+    const connectUberBtn = document.getElementById('connectUberBtn');
+    if (connectUberBtn) {
+        connectUberBtn.addEventListener('click', async () => {
+            try {
+                // Mostrar carregamento
+                connectUberBtn.disabled = true;
+                connectUberBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Conectando...';
+                
+                // Obter token e ID do usuário para o state
+                const token = getToken();
+                const userDataStr = localStorage.getItem('currentUser');
+                if (!token || !userDataStr) {
+                    throw new Error('Sessão expirada. Faça login novamente.');
+                }
+                
+                // Fazer requisição para obter URL de autorização
+                const authResponse = await fetch('/api/integrations/uber/auth', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                if (!authResponse.ok) {
+                    throw new Error('Não foi possível iniciar processo de autorização');
+                }
+                
+                const authData = await authResponse.json();
+                
+                // Extrair ID do usuário para state (em produção, use um sistema mais seguro)
+                const userData = JSON.parse(userDataStr);
+                const userId = userData.id;
+                
+                // Adicionar state ao URL (em produção, criptografe e valide este valor)
+                const authUrl = new URL(authData.authUrl);
+                authUrl.searchParams.append('state', userId);
+                
+                // Abrir janela de autorização
+                window.open(authUrl.toString(), '_blank', 'width=600,height=600');
+                
+                // Informar o usuário
+                showAlert('Uma nova janela foi aberta para autorização. Complete o processo e retorne a esta página.', 'info');
+                
+            } catch (error) {
+                console.error('Erro ao conectar com Uber:', error);
+                showAlert('Erro: ' + error.message, 'error');
+            } finally {
+                // Restaurar botão
+                connectUberBtn.disabled = false;
+                connectUberBtn.innerHTML = '<i class="fas fa-plug me-1"></i> Conectar';
+            }
+        });
+    }
     
-    document.getElementById('disconnectUberBtn').addEventListener('click', disconnectUber);
+    const disconnectUberBtn = document.getElementById('disconnectUberBtn');
+    if (disconnectUberBtn) {
+        disconnectUberBtn.addEventListener('click', disconnectUber);
+    }
     
-    document.getElementById('connect99Btn').addEventListener('click', () => {
-        showAlert('Integração com 99 será disponibilizada em breve.', 'info');
-    });
+    const syncUberBtn = document.getElementById('syncUberBtn');
+    if (syncUberBtn) {
+        syncUberBtn.addEventListener('click', syncUberTrips);
+    }
+    
+    const connect99Btn = document.getElementById('connect99Btn');
+    if (connect99Btn) {
+        connect99Btn.addEventListener('click', () => {
+            showAlert('Integração com 99 será disponibilizada em breve.', 'info');
+        });
+    }
     
     // Verificar parâmetros de URL para mensagens após retorno de autenticação
     checkUrlParams();
 }
 
 async function checkIntegrationStatus() {
+    console.log('Verificando status das integrações...');
     try {
         const token = getToken();
         if (!token) {
-            console.warn('Tentativa de verificar status de integrações sem token');
+            console.error('Token não disponível para verificar integrações');
             return;
         }
-        
-        const response = await fetch('/api/user/integrations', {
+
+        const response = await fetch('/api/integrations/status', {
             method: 'GET',
             headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
+                'Authorization': `Bearer ${token}`
             }
         });
-        
+
         if (!response.ok) {
-            throw new Error('Erro ao buscar integrações');
+            throw new Error('Falha ao obter status das integrações');
         }
+
+        const integrations = await response.json();
         
-        const data = await response.json();
+        // Atualizar UI para Uber
+        updateIntegrationUI('uber', integrations.uber);
         
-        // Atualizar status do Uber
-        if (data.integrations.some(i => i.provider === 'uber' && i.active)) {
-            document.getElementById('uber-status').textContent = 'Conectado';
-            document.getElementById('uber-status').classList.add('connected');
-            document.getElementById('connectUberBtn').style.display = 'none';
-            document.getElementById('disconnectUberBtn').style.display = 'block';
-            
-            // Adicionar botão de sincronização
-            const actionsDiv = document.querySelector('#uber-integration .integration-actions');
-            if (!document.getElementById('syncUberBtn')) {
-                const syncBtn = document.createElement('button');
-                syncBtn.id = 'syncUberBtn';
-                syncBtn.className = 'btn-secondary';
-                syncBtn.innerHTML = '<i class="fas fa-sync"></i> Sincronizar';
-                syncBtn.addEventListener('click', syncUberTrips);
-                actionsDiv.appendChild(syncBtn);
-            }
-        } else {
-            document.getElementById('uber-status').textContent = 'Não conectado';
-            document.getElementById('uber-status').classList.remove('connected');
-            document.getElementById('connectUberBtn').style.display = 'block';
-            document.getElementById('disconnectUberBtn').style.display = 'none';
-            
-            // Remover botão de sincronização se existir
-            const syncBtn = document.getElementById('syncUberBtn');
-            if (syncBtn) syncBtn.remove();
-        }
+        // Atualizar UI para 99 (quando disponível)
+        // updateIntegrationUI('99', integrations['99']);
         
-        // Atualizar status do 99 (quando implementado)
-        // Similar ao Uber acima
-        
+        console.log('Status das integrações atualizado:', integrations);
     } catch (error) {
         console.error('Erro ao verificar status das integrações:', error);
     }
 }
 
-async function syncUberTrips() {
-    try {
-        const token = getToken();
-        if (!token) {
-            console.warn('Tentativa de sincronizar viagens sem token');
-            showAlert('Sessão expirada. Por favor, faça login novamente.', 'error');
-            return;
-        }
+function updateIntegrationUI(provider, status) {
+    const connectBtn = document.getElementById(`connect${provider.charAt(0).toUpperCase() + provider.slice(1)}Btn`);
+    const disconnectBtn = document.getElementById(`disconnect${provider.charAt(0).toUpperCase() + provider.slice(1)}Btn`);
+    const statusBadge = document.getElementById(`${provider}Status`);
+    const syncBtn = document.getElementById(`sync${provider.charAt(0).toUpperCase() + provider.slice(1)}Btn`);
+    
+    if (!connectBtn || !disconnectBtn || !statusBadge) {
+        console.error(`Elementos UI para ${provider} não encontrados`);
+        return;
+    }
+    
+    if (status && status.active) {
+        // Integração ativa
+        connectBtn.classList.add('d-none');
+        disconnectBtn.classList.remove('d-none');
+        statusBadge.textContent = 'Conectado';
+        statusBadge.className = 'badge bg-success';
         
-        const syncBtn = document.getElementById('syncUberBtn');
-        syncBtn.disabled = true;
-        syncBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sincronizando...';
-        
-        const response = await fetch('/api/integrations/uber/sync', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            }
-        });
-        
-        if (!response.ok) {
-            throw new Error('Falha ao sincronizar viagens');
-        }
-        
-        const result = await response.json();
-        
-        showAlert(`Sincronização concluída: ${result.inserted} novas transações, ${result.updated} atualizadas`, 'success');
-    } catch (error) {
-        console.error('Erro ao sincronizar viagens do Uber:', error);
-        showAlert('Erro ao sincronizar viagens. Tente novamente.', 'error');
-    } finally {
-        const syncBtn = document.getElementById('syncUberBtn');
+        // Se houver botão de sincronização, habilitar
         if (syncBtn) {
             syncBtn.disabled = false;
-            syncBtn.innerHTML = '<i class="fas fa-sync"></i> Sincronizar';
+            syncBtn.classList.remove('d-none');
+        }
+        
+        // Verificar e exibir informações adicionais
+        if (status.user_data) {
+            let userData;
+            try {
+                userData = typeof status.user_data === 'string' ? JSON.parse(status.user_data) : status.user_data;
+                
+                // Exibir informações do usuário se disponível
+                const infoEl = document.getElementById(`${provider}Info`);
+                if (infoEl && userData.email) {
+                    infoEl.innerHTML = `<div class="mt-2 small text-muted">
+                        <i class="fas fa-user me-1"></i> ${userData.email || userData.name || 'Usuário'}
+                        <br><i class="fas fa-calendar-check me-1"></i> Conectado em ${new Date(status.created_at).toLocaleDateString()}
+                    </div>`;
+                    infoEl.classList.remove('d-none');
+                }
+            } catch (e) {
+                console.error(`Erro ao processar dados do usuário para ${provider}:`, e);
+            }
+        }
+    } else {
+        // Integração inativa
+        connectBtn.classList.remove('d-none');
+        disconnectBtn.classList.add('d-none');
+        statusBadge.textContent = 'Desconectado';
+        statusBadge.className = 'badge bg-secondary';
+        
+        // Se houver botão de sincronização, desabilitar
+        if (syncBtn) {
+            syncBtn.disabled = true;
+            syncBtn.classList.add('d-none');
+        }
+        
+        // Limpar informações adicionais
+        const infoEl = document.getElementById(`${provider}Info`);
+        if (infoEl) {
+            infoEl.innerHTML = '';
+            infoEl.classList.add('d-none');
         }
     }
 }
 
 function checkUrlParams() {
     const urlParams = new URLSearchParams(window.location.search);
+    const status = urlParams.get('status');
+    const message = urlParams.get('message');
     
-    // Verificar status de integração
-    if (urlParams.get('integration') === 'uber') {
-        if (urlParams.get('status') === 'success') {
-            showAlert('Conectado ao Uber com sucesso!', 'success');
-            // Atualizar status imediatamente
-            checkIntegrationStatus();
-        }
-    }
-    
-    // Verificar erros
-    const error = urlParams.get('error');
-    if (error) {
-        let message = 'Ocorreu um erro na integração.';
-        
-        switch (error) {
-            case 'uber_auth_declined':
-                message = 'Autorização recusada pelo usuário.';
-                break;
-            case 'no_auth_code':
-                message = 'Código de autorização não recebido.';
-                break;
-            case 'uber_callback_error':
-                message = 'Erro no processamento da autenticação.';
-                break;
+    if (status && message) {
+        if (status === 'success') {
+            showAlert(message, 'success');
+        } else if (status === 'error') {
+            showAlert(message, 'error');
+        } else {
+            showAlert(message, 'info');
         }
         
-        showAlert(message, 'error');
-    }
-    
-    // Limpar parâmetros da URL para evitar mensagens repetidas em recargas
-    if (urlParams.has('integration') || urlParams.has('error')) {
-        window.history.replaceState({}, document.title, '/profile.html');
+        // Limpar parâmetros da URL
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, newUrl);
+        
+        // Atualizar status das integrações após mensagem
+        checkIntegrationStatus();
     }
 }
 
@@ -850,4 +902,59 @@ function setupProfileForm() {
 // Configurar formulário de senha
 function setupPasswordForm() {
     // Implemente a lógica para configurar o formulário de senha
+}
+
+async function syncUberTrips() {
+    console.log('Sincronizando viagens do Uber...');
+    try {
+        // Obter token
+        const token = getToken();
+        if (!token) {
+            throw new Error('Sessão expirada. Faça login novamente.');
+        }
+        
+        // Atualizar estado do botão
+        const syncBtn = document.getElementById('syncUberBtn');
+        if (syncBtn) {
+            syncBtn.disabled = true;
+            syncBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sincronizando...';
+        }
+        
+        // Mostrar notificação de início
+        showAlert('Iniciando sincronização de viagens do Uber...', 'info');
+        
+        // Fazer requisição para sincronizar
+        const response = await fetch('/api/integrations/uber/sync', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.message || 'Falha ao sincronizar viagens do Uber');
+        }
+        
+        // Processar resposta
+        const result = await response.json();
+        
+        // Exibir resultado
+        showAlert(`Sincronização do Uber concluída! ${result.inserted} novas viagens importadas, ${result.updated} atualizadas.`, 'success');
+        
+        // Atualizar tabela de transações se estiver na página
+        if (typeof loadTransactions === 'function') {
+            loadTransactions();
+        }
+    } catch (error) {
+        console.error('Erro ao sincronizar viagens do Uber:', error);
+        showAlert(`Erro: ${error.message}`, 'error');
+    } finally {
+        // Restaurar estado do botão
+        const syncBtn = document.getElementById('syncUberBtn');
+        if (syncBtn) {
+            syncBtn.disabled = false;
+            syncBtn.innerHTML = '<i class="fas fa-sync-alt me-1"></i> Sincronizar';
+        }
+    }
 } 

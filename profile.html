@@ -87,15 +87,21 @@
                             </div>
                             <div class="integration-info">
                                 <h3>Uber</h3>
-                                <p id="uber-status">Não conectado</p>
+                                <div class="integration-status">
+                                    <span id="uberStatus" class="badge bg-secondary">Desconectado</span>
+                                </div>
                                 <p>Importe suas viagens de Uber automaticamente como despesas.</p>
+                                <div id="uberInfo" class="d-none"></div>
                             </div>
                             <div class="integration-actions">
                                 <button id="connectUberBtn" class="btn-primary">
-                                    <i class="fas fa-plug"></i> Conectar
+                                    <i class="fas fa-plug me-1"></i> Conectar
                                 </button>
-                                <button id="disconnectUberBtn" class="btn-danger" style="display: none;">
-                                    <i class="fas fa-unlink"></i> Desconectar
+                                <button id="disconnectUberBtn" class="btn-danger d-none">
+                                    <i class="fas fa-plug-circle-xmark me-1"></i> Desconectar
+                                </button>
+                                <button id="syncUberBtn" class="btn-secondary d-none">
+                                    <i class="fas fa-sync-alt me-1"></i> Sincronizar
                                 </button>
                             </div>
                         </div>
@@ -107,15 +113,21 @@
                             </div>
                             <div class="integration-info">
                                 <h3>99</h3>
-                                <p id="app99-status">Não conectado</p>
+                                <div class="integration-status">
+                                    <span id="99Status" class="badge bg-secondary">Desconectado</span>
+                                </div>
                                 <p>Importe suas viagens de 99 automaticamente como despesas.</p>
+                                <div id="99Info" class="d-none"></div>
                             </div>
                             <div class="integration-actions">
                                 <button id="connect99Btn" class="btn-primary">
-                                    <i class="fas fa-plug"></i> Conectar
+                                    <i class="fas fa-plug me-1"></i> Conectar
                                 </button>
-                                <button id="disconnect99Btn" class="btn-danger" style="display: none;">
-                                    <i class="fas fa-unlink"></i> Desconectar
+                                <button id="disconnect99Btn" class="btn-danger d-none">
+                                    <i class="fas fa-plug-circle-xmark me-1"></i> Desconectar
+                                </button>
+                                <button id="sync99Btn" class="btn-secondary d-none">
+                                    <i class="fas fa-sync-alt me-1"></i> Sincronizar
                                 </button>
                             </div>
                         </div>
