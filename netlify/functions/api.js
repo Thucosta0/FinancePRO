@@ -34,14 +34,6 @@ const authenticateToken = async (authHeader) => {
   }
 };
 
-// Backup do usuário para desenvolvimento
-const BACKUP_USER = {
-  id: "backup-user-id",
-  nome: "Usuário Backup",
-  email: "admin@financaspro.com",
-  senha_hash: "$2a$10$kVB2wxRNpdGPn7.JlBJ8AOUuKIVLWfgjFOjyJsA.Xnm4GVClHxlC2" // senha: admin123
-};
-
 // Rotas da API
 const routes = {
   // Rota de login - Aprimorada e mais robusta
@@ -155,30 +147,6 @@ const routes = {
         const user = users && users.length > 0 ? users[0] : null;
         
         if (!user) {
-          // Tentativa 3: Conta de emergência (para desenvolvimento)
-          if (email === BACKUP_USER.email) {
-            console.log('[Login] Email corresponde ao usuário de backup, verificando senha...');
-            const senhaCorreta = await bcrypt.compare(senha, BACKUP_USER.senha_hash);
-            
-            if (senhaCorreta) {
-              console.log('[Login] Login de emergência bem-sucedido');
-              const token = jwt.sign(
-                { id: BACKUP_USER.id, email: BACKUP_USER.email },
-                JWT_SECRET,
-                { expiresIn: '7d' }
-              );
-              
-              return {
-                statusCode: 200,
-                body: JSON.stringify({
-                  message: 'Login de emergência realizado com sucesso',
-                  token,
-                  user: { id: BACKUP_USER.id, nome: BACKUP_USER.nome, email: BACKUP_USER.email }
-                })
-              };
-            }
-          }
-          
           console.error('[Login] Usuário não encontrado para o email:', email);
           return {
             statusCode: 401,
@@ -609,22 +577,6 @@ const routes = {
         };
       } catch (error) {
         console.error('[UserMe] Erro ao buscar usuário:', error.message);
-        
-        // Verificar se é uma situação de backup
-        if (authResult.user.id === BACKUP_USER.id) {
-          console.log('[UserMe] Retornando usuário de backup');
-          return {
-            statusCode: 200,
-            body: JSON.stringify({ 
-              user: { 
-                id: BACKUP_USER.id, 
-                nome: BACKUP_USER.nome, 
-                email: BACKUP_USER.email,
-                created_at: new Date().toISOString()
-              } 
-            })
-          };
-        }
         
         return {
           statusCode: 500,
