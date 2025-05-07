@@ -25,7 +25,7 @@ FinançasPRO é uma aplicação que ajuda usuários a controlar suas finanças p
 
 1. Clone o repositório:
    ```bash
-   git clone https://github.com/seu-usuario/financas-pro.git
+   git clone https://github.com/Thucosta0/financas-pro.git
    cd financas-pro
    ```
 
